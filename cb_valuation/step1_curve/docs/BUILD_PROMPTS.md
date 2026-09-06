@@ -1,5 +1,7 @@
 # BUILD_PROMPTS — 1단계 앱을 실제로 만들 때 차례로 입력할 프롬프트 (조태호 8단계를 CB에 맞게)
 
+> **진행 상태(2026-09-07 앱 초안)**: 2단계(러너·스냅샷·CLI) 완료, 4a·4b·4c 는 DEFAULT·PCHIP_TREE 범위(모드 A, par, 선형/PCHIP, flat/flat_forward)만 구현, 5단계 화면(app/server.py + viewer.html: 오른쪽 EDGES 그래프에 현재 노드·경로 강조) 완료, 7단계 승인(CLI resume + 앱 /api/decision, 둘 다 set_decision) 완료, 9단계 증빙(01~12·README·checklist·xlsx Rf_dc/Rd_dc) 초안 완료. 미구현: 모드 B(KICPA_1130)·REVIEWER_2024·EXCEL_KBI 프로필, io/label_ai.py, scripts/*.py, 6단계 두 갈래 엔진 테스트 전수(현재 tests/test_app_pipeline.py 일부), 골든 파일 tests/fixtures/golden/.
+
 전제: 프로젝트 루트(`프로그램/`)에서 `claude` 실행. 각 단계 후 결과를 **숫자로** 확인하고(완료 메시지 금지) 다음 단계로. 각 단계 끝에 `/graph-check`. 형식은 책 4장의 단계별 프롬프트(파일명·구조·상수 명시)를 따른다.
 
 ## 공통 규칙 (모든 단계에 적용)

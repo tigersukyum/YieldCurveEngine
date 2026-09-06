@@ -66,6 +66,7 @@ class Constants:
     PRICE_MODE = "par"  # BOOT/검토자 PV OF BOND 10000 | "kicpa_conventional"(한공회 §3.7.2, 3M 국채 10,080.6)
     INTERP_METHOD = "linear"  # 검토자 C37 직선보간 ; "pchip" 필수 옵션 ; 비교 전용 natural_cubic/bessel/kruger/smith_wilson
     INTERP_SPACE_PRE = "ytm"  # 모드 A: knot→이표격자 per-period 선형 (BOOT!G/V 재현 오차 0)
+    INTERP_METHOD_PRE = "linear"  # 모드 A 이표격자 보간법 — XL BOOT!G/V 선형; PCHIP_TREE 도 이표격자는 선형(PROFILE_DESCRIPTIONS "트리 격자 보간만 PCHIP")
     INTERP_SPACE_GRID = "spot_annual"  # BM MF_INTERPOL 이 BOOT!M(연복리 spot) 선형보간 = 한공회 변형① ; 대안 spot_continuous(②), log_df(④), ytm(③ 재현)
     PCHIP_RECOMMENDED_SPACE = "log_df"  # 카탈로그 §3: PCHIP 은 g=r_c·t 대상일 때 선도 양수·연속 보장 (PCHIP_TREE 프로필이 명시 지정)
     INTERP_TABLE = {  # method_id: (is_local, include) — INTERPOLATION_METHODS §1 (include: must|recommended|compare_only|deferred_step2)
@@ -80,7 +81,14 @@ class Constants:
     RF_SEED_3M = "none"  # | "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_KBI 전용)
     RF_REGRID_RULE = "interp"  # | "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_KBI 전용)
     MIN_KNOTS = 4  # PCHIP 끝점 3점식 요건 + 여유 (열린 결정)
+    SENSITIVITY_COMBOS = [("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_annual"), ("linear", "spot_continuous")]  # 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단
+    PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE")  # 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화
+    BLOCK_OF_ISSUANCE = {"사모": "사모무보증", "공모": "공모무보증"}  # 발행형태 → KIS-NET 고시 블록(B39 공모무보증 / B54 사모무보증), 감사인 Q13
+    RATING_ORDER = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-", "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-", "B+", "B0", "B-"]  # KIS-NET 회사채 등급 서열(블록 분할 기준: 서열이 되돌아가면 새 블록); 부호 없는 등급은 "0" 으로 정규화
     NOTCH_DEFAULT = 0  # 한공회 §3.9.1 노칭 (≠0 → NOTCH_APPLIED 승인)
+    DF_RANGE = (0.0, 1.0)  # DF 유효 범위(상한 1 = 명목금리 음수 불허 — 열린 결정) ; 부트스트랩 df_valid·트리 df_range_ok
+    TOL_DF_MONOTONE = 1e-15  # 트리 DF 비증가 판정 여유(부동소수 반올림)
+    BP_PER_UNIT = 1e4; WEEKS_PER_YEAR = 52  # 단위 환산(bp, 증빙 WEEKS 행)
     BLOCK_FALLBACK = {"사모무보증": "공모무보증", "공모무보증": "사모무보증"}  # 요청 블록 결측 시 대체 (감사인 Q13 회신 2025-02-04: 사모 미고시 → 공모 사용) ; 대체 사용 → ROW_FALLBACK 승인
     # --- 격자·일수
     DAYCOUNT = "ACT/365"  # 보고서 T=1633/365 ; "30/360" = 워크시트 함수 YEARFRAC(MAIN_주가!B7,MAIN_주가!B6,0) (XL DATA!A4=3.475, dT=DATA!C4=A4/B4, BM!C3=DATA!$C$4)
@@ -89,7 +97,7 @@ class Constants:
     NODE_DISCOUNT_CONV = "3_continuous_fwd"  # 감사인 Q8 ③ exp(−f·dt) = XL BM row9, 한공회 §3.7.4.1 ; ① "1_discrete_fwd"(검토자 Check list!E34), ② "2_quarterly_fwd"
     CONVENTION_REASONS = {  # 증빙 관례 선언문에 그대로 삽입되는 사유 문장(자유 텍스트 금지)
         "COUPON_CONV": "시가평가 기준수익률은 채권의 이표 빈도(국고채 6개월·회사채 3개월) 기준으로 고시되므로 기간 이표율은 명목 YTM/m 으로 한다(한공회 §3.7.3.5; 검토자 Check list E35 '연간YTM/4').",
-        "NODE_DISCOUNT_CONV": "옵션 평가 모형은 연속복리 현물·선도이자율을 사용하고 할인계수는 exp(−f·dt)이다(한공회 §3.7.4.1~4.3; XL BM row9). 이산 1/(1+F) 값을 병기해 검토자 관례(Check list E34)와 대조 가능하게 한다.",
+        "NODE_DISCOUNT_CONV": "옵션 평가 모형은 연속복리 현물·선도이자율을 사용하고 할인계수는 exp(−f·dt)이다(한공회 §3.7.4.1~4.3; XL BM row9). 병기하는 ① 값은 XL BM F열 정의 (1+f_cont)^(−dt) 이며 ③ 과의 차이(≈f²dt/2)를 보인다; 일관 복리 하의 1/(1+F_step) 은 ③ 과 항등이라 병기하지 않는다(검토자 Check list E34 대조용).",
         "INTERP_METHOD": "마디 사이 보간은 부트스트랩 내부(모드 B 중간 이표일)와 트리 격자 매핑에 같은 방법·공간을 적용하고 공시한다(한공회 §3.7.3.6).",
         "EXTRAP": "첫 knot 이전은 현물 평탄(검토자 관례), 마지막 knot 이후는 연속복리 선도 평탄 외삽(g 선형 연장)이며 만기>horizon 은 실패 처리한다(카탈로그 §5).",
     }
@@ -227,7 +235,7 @@ def new_state(C=Constants) -> NS:
     """STATE_SCHEMA.md 와 1:1. 노드가 채우기 전의 빈 state."""
     curve = lambda v: {c: (list(v) if isinstance(v, list) else v) for c in C.CURVE_IDS}
     return NS(
-        run=NS(run_id=None, profile=C.PROFILE_NAME, curve_set_id=None, constants_snapshot=None, constants_fingerprint=C.fingerprint(),
+        run=NS(run_id=None, profile=C.PROFILE_NAME, curve_set_id=None, base_dir=None, constants_snapshot=None, constants_fingerprint=C.fingerprint(),
                current_node=None, path=[], status="running", paused_at_node=None, snapshot_path=None, paused_at=None, resume_n=0),
         input=NS(raw_text=None, file_sha256=None, n_rows=0, header_labels=[], header_ok=False, rows=[], parse_errors=[], zero_value_cells=[]),
         provenance=NS(source_agency=None, agencies=[], averaging=False,
@@ -244,18 +252,19 @@ def new_state(C=Constants) -> NS:
                 ytm=curve(None), knot_tenors=curve([]), missing_knots=curve([]), usable_knot_count=curve(0)),
         grid=NS(knots=curve([]), boot_times=curve([]), horizon_years=None, remaining_years=None, unused_tenors=curve([]),
                 tree=NS(N=None, T=None, dt_mode=None, dt=[], times=[], daycount=None, event_times=[])),
-        interp=NS(method=None, space_pre=None, space_grid=None, extrap_left=None, extrap_right=None, is_local=None,
-                  par_coupon_on_grid=None, knot_roundtrip_max_err=None, all_finite=False, extrapolated_points=curve([]), coupon_grid_extrap_used=False),
+        interp=NS(method=None, method_pre=None, space_pre=None, space_grid=None, extrap_left=None, extrap_right=None, is_local=None,
+                  par_coupon_on_grid=None, ytm_on_coupon_grid=curve(None), knot_roundtrip_max_err=None, all_finite=False, extrapolated_points=curve([]), coupon_grid_extrap_used=False),
         bootstrap=NS(mode=None, price_mode=None, status=curve(None), points=curve([]), spot_pp=curve(None), df=curve([]),
                      min_denominator=curve(None), df_valid=curve(False), solver_log=curve([]), errors=[]),
         par_check=NS(per_maturity=curve([]), max_abs_err=None, all_finite=False, unused_knot_max_abs_err=None),
         conv=NS(spot_annual=curve(None), spot_cont=curve(None), roundtrip_max_err=None, all_finite=False),
         tree=NS(spot_annual_on_grid=curve(None), spot_cont_on_grid=curve(None), df_spot_on_grid=curve([]), df_finite=False, df_range_ok=False,
                 df_monotone_ok=False, extrap_left_flat_steps=curve([]), extrap_left_origin_steps=curve([]), extrap_right_steps=curve([]),
-                excel_zero_used=False, interp_method_used=None, interp_space_used=None),
+                excel_zero_used=False, interp_method_used=None, interp_space_used=None, knot_roundtrip_max_err=None, ytm_on_grid=curve(None)),
         fwd=NS(cont_on_grid=curve(None), disc_per_step=curve(None), disc_annual_eff=curve(None), df_step=curve([]), df_step_alt=curve([]), df_cum=curve([]),
+               spot_per_step=curve(None), growth_step=curve([]), growth_cum_prev=curve([]), df_backward=curve([]), boot_fwd_pp=curve(None), boot_fwd_annual=curve(None),
                negative_count=curve(0), max_jump_bp=curve(0.0), all_finite=False, rule=None, node_discount_conv=None, node_discount_reason=None, tenor_table=curve([])),
-        fwd_spot_check=NS(max_abs_err_log=None, max_abs_err_prod=None, all_finite=False, sample=None),
+        fwd_spot_check=NS(max_abs_err_log=None, max_abs_err_prod=None, all_finite=False, sample=None, rows=curve([])),
         sensitivity=NS(table=[], max_rel_df_diff=None, freq_alt=NS(), excel_recon=None),
         headline=NS(rule=None, rf_ytm_remaining=None, rd_ytm_remaining=None, rf_spot_remaining_annual=None, rd_spot_remaining_annual=None,
                     candidates=[], reported_rf=None, reported_rd=None, match_ok=None, rating_applied=None, block_applied=None),
@@ -372,7 +381,7 @@ def node_build_grid(s, C):
         s.grid.horizon_years = C.CURVE_HORIZON_Y
 
 def node_interpolate(s, C):
-    """interp.*: INTERP_TABLE 플러그인 인스턴스화(method=C.INTERP_METHOD, space=C.INTERP_SPACE_GRID), 모드 A 면 이표격자 c_n(COUPON_CONV), knot 왕복 검사, 외삽 사용 기록."""
+    """interp.*: method(트리 격자용 INTERP_METHOD)·method_pre(이표격자용 INTERP_METHOD_PRE) 기록, 모드 A 면 이표격자 YTM(ytm_on_coupon_grid) → c_n(COUPON_CONV, par_coupon_on_grid), knot 왕복 검사, 외삽 사용 기록."""
     s.interp.method, s.interp.space_pre, s.interp.space_grid = C.INTERP_METHOD, C.INTERP_SPACE_PRE, C.INTERP_SPACE_GRID
     s.interp.extrap_left, s.interp.extrap_right = C.EXTRAP_LEFT, C.EXTRAP_RIGHT
     s.interp.is_local = C.INTERP_TABLE[C.INTERP_METHOD][0]
@@ -390,11 +399,11 @@ def node_convert_compounding(s, C):
     pass
 
 def node_map_tree_grid(s, C):
-    """tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위·단조, 외삽 스텝 사실 기록(판정 없음), 사용한 method/space 기록."""
+    """tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid(표시용, INTERP_METHOD_PRE)."""
     s.tree.interp_method_used, s.tree.interp_space_used = s.interp.method, s.interp.space_grid
 
 def node_compute_forward(s, C):
-    """fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=1/(1+F) [①], F_i=expm1(f dt), 연환산, negative_count, max_jump_bp, 테너간 선도표(Q10-1)."""
+    """fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=(1+f)^(−dt) [① XL BM F열], F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1)."""
     s.fwd.rule = C.TREE_FWD_RULE
     s.fwd.node_discount_conv = C.NODE_DISCOUNT_CONV
     s.fwd.node_discount_reason = C.CONVENTION_REASONS["NODE_DISCOUNT_CONV"]
@@ -584,7 +593,8 @@ EDGES = [
     ("convert_compounding", "왕복변환불일치", lambda s, C: s.conv.roundtrip_max_err > C.TOL_ROUNDTRIP_COMP, "fail"),
     ("convert_compounding", "변환완료", ALWAYS, "map_tree_grid"),
     # map_tree_grid
-    ("map_tree_grid", "트리DF비유한", lambda s, C: not s.tree.df_finite, "fail"),
+    ("map_tree_grid", "트리DF비유한", lambda s, C: not (s.tree.df_finite and _fin(s.tree.knot_roundtrip_max_err)), "fail"),
+    ("map_tree_grid", "격자knot왕복불일치", lambda s, C: s.tree.knot_roundtrip_max_err > C.TOL_KNOT_ROUNDTRIP, "fail"),
     ("map_tree_grid", "엑셀제로외삽_정상모드", lambda s, C: s.tree.excel_zero_used and not C.EXCEL_REPLICATE, "fail"),
     ("map_tree_grid", "DF범위_또는_단조위반", lambda s, C: not (s.tree.df_range_ok and s.tree.df_monotone_ok), "fail"),
     ("map_tree_grid", "격자매핑완료", ALWAYS, "compute_forward"),
@@ -640,7 +650,7 @@ EDGE_CODES = {
     ("bootstrap", "DF무효_비유한"): "BOOT_DF_INVALID", ("bootstrap", "분모비양수"): "DENOM_NONPOS", ("bootstrap", "근찾기실패_비수렴"): "ROOTFIND_FAIL",
     ("verify_par", "파잔차비유한"): "PAR_NONFINITE", ("verify_par", "파검증실패"): "PAR_RESIDUAL",
     ("convert_compounding", "변환비유한"): "COMP_NONFINITE", ("convert_compounding", "왕복변환불일치"): "COMP_ROUNDTRIP",
-    ("map_tree_grid", "트리DF비유한"): "TREE_DF_NONFINITE", ("map_tree_grid", "엑셀제로외삽_정상모드"): "EXCEL_ZERO_OUTSIDE_REPLICATE", ("map_tree_grid", "DF범위_또는_단조위반"): "DF_RANGE_OR_MONOTONE",
+    ("map_tree_grid", "트리DF비유한"): "TREE_DF_NONFINITE", ("map_tree_grid", "격자knot왕복불일치"): "TREE_KNOT_ROUNDTRIP", ("map_tree_grid", "엑셀제로외삽_정상모드"): "EXCEL_ZERO_OUTSIDE_REPLICATE", ("map_tree_grid", "DF범위_또는_단조위반"): "DF_RANGE_OR_MONOTONE",
     ("compute_forward", "선도비유한"): "FWD_NONFINITE",
     ("verify_fwd_spot", "정합잔차비유한"): "FWD_SPOT_NONFINITE", ("verify_fwd_spot", "정합실패"): "FWD_SPOT_MISMATCH",
     ("compute_headline", "헤드라인미비교"): "HEADLINE_NOT_COMPARED",
@@ -652,9 +662,18 @@ EDGE_CODES = {
 
 
 # ----------------------------------------------------------------------------- Router
-def run(state: NS, C=Constants, start: str | None = None, max_steps: int = 200) -> NS:
+def run(state: NS, C=Constants, start: str | None = None, max_steps: int = 200, nodes=None) -> NS:
     """위→아래 첫 일치 엣지. 노드는 채우기만, 라우팅은 여기서만. wait_for_human/done/fail 에서 반환.
-    start 는 재개 전용: 승인 노드이며 run.paused_at_node 와 같아야 한다. 재개는 C = Constants.with_profile(state.run.profile) 로 호출한다."""
+    start 는 재개 전용: 승인 노드이며 run.paused_at_node 와 같아야 한다. 재개는 C = Constants.with_profile(state.run.profile) 로 호출한다.
+    nodes 는 노드 함수 등록표(기본 NODES = 스텁; 앱은 nodes 패키지의 구현표를 넘긴다). EDGES 는 바뀌지 않는다."""
+    NODES_ = nodes or NODES
+    if set(NODES_) != set(NODES):
+        raise ValueError("노드 등록표의 id 집합이 NODES 와 다름")
+    for nid in NODES:  # 접두사 튜플 동일 + 승인·종단·sanity_check 는 반드시 이 파일의 함수(set_decision 우회·집계 교체 차단)
+        if tuple(NODES_[nid][1]) != tuple(NODES[nid][1]):
+            raise ValueError(f"노드 {nid} 의 접두사가 NODES 와 다름")
+        if nid in C.HUMAN_NODES + C.TERMINAL_NODES + ("sanity_check",) and NODES_[nid][2] is not NODES[nid][2]:
+            raise ValueError(f"노드 {nid} 함수는 교체할 수 없음(step1_graph 전용)")
     if start is None:
         if C.fingerprint() != state.run.constants_fingerprint:
             raise ValueError("state 가 다른 Constants(프로필)로 생성됨 — new_state(C) 와 run(state, C) 의 C 가 같아야 함")
@@ -666,10 +685,10 @@ def run(state: NS, C=Constants, start: str | None = None, max_steps: int = 200) 
         current = start
     state.run.status = "running"
     for _ in range(max_steps):
-        if current not in NODES:
+        if current not in NODES_:
             raise ValueError(f"미등록 노드: {current}")
         state.run.current_node = current
-        NODES[current][2](state, C)
+        NODES_[current][2](state, C)
         if current in C.TERMINAL_NODES:
             return state
         for frm, name, cond, to in EDGES:

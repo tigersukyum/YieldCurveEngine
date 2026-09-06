@@ -21,19 +21,20 @@
 
 | 접두사 | 필드 | 타입/의미 | 채우는 노드 |
 |---|---|---|---|
-| run | run_id | str\|None — 실행 식별자. 형식 규약은 코드·GRAPH_SPEC·PRD·BUILD_PROMPTS 어디에도 없다 — 미확인(CLI 구현 시 확정). 확인된 키는 스냅샷·증빙 디렉터리의 `<valuation_date>__<curve_set_id>`(§3.5)뿐이다 | runner/CLI(미구현) |
+| run | run_id | str\|None — `run_<UTC 시각 YYYYMMDDTHHMMSS>`(`app/runner.prepare_state`). 스냅샷·증빙 디렉터리 키는 `<valuation_date>__<curve_set_id>`(§3.5) | runner |
+| run | base_dir | str\|None — 산출물 루트(절대경로). 러너가 기록; export_evidence 가 읽는다(환경변수 사용 금지) | runner |
 | run | profile | str — `PROFILES` 키. `new_state(C)` 가 `C.PROFILE_NAME` 을 복사; 재개 시 `Constants.with_profile(run.profile)` 로 복원(§2.4) | new_state(C) |
-| run | curve_set_id | str\|None — 커브 세트 식별자(스냅샷·증빙 디렉터리 키 `<valuation_date>__<curve_set_id>` 의 일부, §3.5) | runner/CLI(미구현) |
+| run | curve_set_id | str\|None — 커브 세트 식별자(입력값; 기본 "CB1"), 디렉터리 키 `<valuation_date>__<curve_set_id>` 의 일부(§3.5) | runner |
 | run | constants_snapshot | dict\|None — 초기값 None. 코드에 채우는 곳·용도 정의가 없다 — 미확인(README_conventions.md 는 `export_evidence` 가 상수 전부를 인쇄하지만 이 필드를 읽는다는 정의는 없다) | runner/CLI(미구현) |
 | run | constants_fingerprint | sha256 hex — `C.fingerprint()`, 결정적 직렬화(§2.5) | new_state(C) |
 | run | current_node | str\|None — 라우터가 노드 함수를 호출하기 직전에 기록 | run() |
 | run | path | list[(from, 조건이름, to, ts_utc, resume_n)] — 지나온 엣지 = 감사조서 경로(§2.2) | run() |
 | run | status | "running"\|"paused"\|"done"\|"failed" (§2.1) | run() / wait_for_human / done / fail |
 | run | paused_at_node | str\|None — 정지한 승인 노드 id(= `run.path[-1][0]`) | wait_for_human |
-| run | snapshot_path | str\|None — 저장된 스냅샷 파일 경로(§3.5) | wait_for_human(파일 저장·경로 기록은 graph/snapshot.py·app/cli.py 몫 — BUILD_PROMPTS §2, 미구현; 스텁은 미기록) |
+| run | snapshot_path | str\|None — 저장된 스냅샷 파일 경로(base_dir 상대, §3.5). `snapshot.save_snapshot` 이 기록(러너 몫) | wait_for_human → runner |
 | run | paused_at | ISO 시각(UTC)\|None — 정지 시각 | wait_for_human |
 | run | resume_n | int — 재개 회차. `new_state` 0, `run(start=…)` 마다 +1(§2.3) | run() |
-| input | raw_text | str\|None — 붙여넣기/파일 원문 불변 보존 | load_matrix |
+| input | raw_text | str\|None — 붙여넣기/파일 원문 불변 보존(러너가 넣고 load_matrix 가 읽는다) | runner |
 | input | file_sha256 | str\|None — 원문 해시. PROVENANCE_REQUIRED_FIELDS 항목(`record_provenance` 가 읽음) | load_matrix |
 | input | n_rows | int — 행 수(0 → 행없음 → fail) | load_matrix |
 | input | header_labels | list[str] — 헤더 셀 원문 | load_matrix |
@@ -41,16 +42,16 @@
 | input | rows | list[dict] — 행 항목 `{row_index, label_raw, block, ytm_pct{tenor→float\|None}}`(node_load_matrix docstring). 값은 % 원문 유지(×PCT_TO_DEC 변환은 select_rows), MISSING_TOKENS → None(0 금지); 라벨 해석 안 함 | load_matrix |
 | input | parse_errors | list[str] — 숫자 아님·열 수 불일치(비어 있지 않으면 파싱오류 → fail) | load_matrix |
 | input | zero_value_cells | list[(row_index, tenor_label)] — 0.0 셀(ZERO_VALUE_CELL WARN 후보; node_load_matrix docstring) | load_matrix |
-| provenance | source_agency | str\|None — 채권평가사 | record_provenance |
+| provenance | source_agency | str\|None — 채권평가사 | runner(입력) → record_provenance(파생) |
 | provenance | agencies | list[str] — 사용한 평가사 목록(비어 있으면 `[source_agency]` 로 채움) | record_provenance |
 | provenance | averaging | bool — 복수 평가사 평균 사용 여부(초기값 False) | record_provenance |
-| provenance | curve_date / valuation_date | ISO date\|None — 고시일 / 평가기준일 | record_provenance |
+| provenance | curve_date / valuation_date | ISO date\|None — 고시일 / 평가기준일(입력값) | runner |
 | provenance | date_lag_days | int\|None — `(valuation_date − curve_date).days`. 게이트 기준일역전_또는_지연초과(CURVE_DATE_MAX_LAG_DAYS), 코드 DATE_LAG | record_provenance |
-| provenance | raw_copy_path / downloaded_at / operator | str / ISO / str (\|None) — data/raw 사본·다운로드 시각·담당자(PROVENANCE_REQUIRED_FIELDS) | record_provenance |
-| provenance | capture_path | str\|None — 행 렌더링 캡처(감사인 Q12). PROVENANCE_APPROVAL_FIELDS(결측 → CAPTURE_MISSING) | record_provenance |
+| provenance | raw_copy_path / downloaded_at / operator | str / ISO / str (\|None) — data/raw 사본(러너가 저장)·다운로드 시각·담당자(PROVENANCE_REQUIRED_FIELDS) | runner |
+| provenance | capture_path | str\|None — 행 렌더링 캡처(감사인 Q12). PROVENANCE_APPROVAL_FIELDS(결측 → CAPTURE_MISSING) | runner |
 | provenance | complete | bool — PROVENANCE_REQUIRED_FIELDS 전부 존재(`file_sha256` 는 `input.file_sha256` 에서 읽음). False → 출처불완전 → fail | record_provenance |
 | provenance.method_choice | profile / interp_method / interp_space_grid / chosen_by / chosen_at | str\|None ×5 — **사용자가 실행 시 고른 프로필**(PROFILE_SELECTION=required; CLI `--profile`, 화면 목록 PROFILE_DESCRIPTIONS). `profile`·`chosen_by` 는 PROVENANCE_REQUIRED_FIELDS(미선택 → 출처불완전); `profile ≠ C.PROFILE_NAME` → 엣지 프로필불일치; interp_method/space 는 노드가 C 에서 복사 | record_provenance(선택값은 CLI 가 state 에 넣음) |
-| provenance.instrument | issuer / cb_name / maturity_date / issuance_type / rating | str\|None ×5 — issuance_type 공모\|사모; maturity_date 는 PROVENANCE_REQUIRED_FIELDS | record_provenance |
+| provenance.instrument | issuer / cb_name / maturity_date / issuance_type / rating | str\|None ×5 — issuance_type 공모\|사모(BLOCK_OF_ISSUANCE 로 블록 결정); maturity_date 는 PROVENANCE_REQUIRED_FIELDS | runner |
 | provenance.instrument | prior_rating_basis / prior_block_basis | str\|None — 전기 등급·블록(RATING_CHANGED·BLOCK_CHANGED 비교 기준, 감사인 Q13) | record_provenance |
 | provenance.instrument | event_dates | list — 풋/콜 등 이벤트일(`build_grid` 가 `grid.tree.event_times` 로 매핑). 항목 키 미확인 | record_provenance |
 | provenance.instrument.rating_evidence | source_agency / lookup_date / capture_path / rating_valid_from / sha256 | str\|None ×5 — 등급 조회 증빙(감사인 Q13-1); capture_path 는 PROVENANCE_APPROVAL_FIELDS | record_provenance |
@@ -81,7 +82,8 @@
 | grid | remaining_years | float\|None — 잔여만기(DAYCOUNT). 게이트 잔여만기비유한 → 만기초과 | build_grid |
 | grid | unused_tenors | {c: list[str]} — 격자에서 제외된 공시 테너(TENOR_DROPPED WARN) | build_grid |
 | grid.tree | N / T / dt_mode / dt / times / daycount / event_times | int / 년 / str / list / list / str / list — TREE_GRID 규칙·DAYCOUNT(FORMULA_REFERENCE §5.2), 이벤트일 매핑. event_times 항목 키 미확인 | build_grid |
-| interp | method / space_pre / space_grid / extrap_left / extrap_right | str\|None ×5 — INTERP_METHOD / INTERP_SPACE_PRE / INTERP_SPACE_GRID / EXTRAP_LEFT / EXTRAP_RIGHT 복사(공시 항목 C37·한공회) | interpolate |
+| interp | method / method_pre / space_pre / space_grid / extrap_left / extrap_right | str\|None ×6 — INTERP_METHOD(트리 격자) / INTERP_METHOD_PRE(이표격자) / INTERP_SPACE_PRE / INTERP_SPACE_GRID / EXTRAP_LEFT / EXTRAP_RIGHT 복사(공시 항목 C37·한공회) | interpolate |
+| interp | ytm_on_coupon_grid | {c: RateVector\|None} — 이표격자 위 보간 YTM(basis nominal_m{m}; 증빙 'YTM - YEARLY') | interpolate |
 | interp | is_local | bool\|None — `INTERP_TABLE[method][0]` | interpolate |
 | interp | par_coupon_on_grid | {c: RateVector}\|None — 모드 A 이표격자 c_n(BOOT!G/V), basis per_period_m2 / m4 | interpolate |
 | interp | knot_roundtrip_max_err / all_finite | float\|None / bool — 게이트 보간비유한 → knot왕복불일치(TOL_KNOT_ROUNDTRIP) | interpolate |
@@ -104,17 +106,22 @@
 | tree | df_finite / df_range_ok / df_monotone_ok | bool ×3 — 게이트 사실(트리DF비유한, DF범위_또는_단조위반) | map_tree_grid |
 | tree | extrap_left_flat_steps / extrap_left_origin_steps / extrap_right_steps | {c: list[int]} ×3 — 외삽 스텝 index, 사실만. 심각도는 sanity_check: EXTRAP_LEFT_FLAT 은 EXTRAP_LEFT_FLAT_SEVERITY(열린 결정), EXTRAP_LEFT_ORIGIN·EXTRAP_RIGHT_USED 는 APPROVAL_REQUIRED | map_tree_grid |
 | tree | excel_zero_used | bool — VBA Empty→0 외삽 사용 사실(EXCEL_REPLICATE 가 아니면 엣지 엑셀제로외삽_정상모드 → fail) | map_tree_grid |
-| tree | interp_method_used / interp_space_used | str\|None — 실제 사용한 보간 방법·공간(interp.method / space_grid 와 다르면 INTERP_MISMATCH FAIL) | map_tree_grid |
+| tree | interp_method_used / interp_space_used | str\|None — 실제 사용한 보간 방법·공간(보간체 객체 CurveOnGrid.method/space 에서 읽음; interp.method / space_grid 와 다르면 INTERP_MISMATCH FAIL) | map_tree_grid |
+| tree | knot_roundtrip_max_err | float\|None — 트리 격자 보간체의 마디 재현 오차(게이트 트리DF비유한 → 격자knot왕복불일치, TOL_KNOT_ROUNDTRIP) | map_tree_grid |
+| tree | ytm_on_grid | {c: RateVector\|None} — 트리 격자 위 표시용 YTM(INTERP_METHOD_PRE; 검토자 Rf_dc r11) | map_tree_grid |
 | fwd | cont_on_grid | {c: RateVector\|None} — 연속복리 선도 f_i(BM C-FWD), basis continuous | compute_forward |
 | fwd | disc_per_step / disc_annual_eff | {c: RateVector\|None} — F_i(basis per_step_simple) / 연환산(annual_eff) | compute_forward |
-| fwd | df_step / df_step_alt / df_cum | {c: list} ×3 — exp(−f·dt)[③] / 1/(1+F)[①] / Π | compute_forward |
+| fwd | df_step / df_step_alt / df_cum | {c: list} ×3 — exp(−f·dt)[③] / (1+f)^(−dt)[① XL BM F열; ③ 과의 차이 ≈ f²dt/2] / Π | compute_forward |
+| fwd | spot_per_step / growth_step / growth_cum_prev / df_backward | RateVector(per_step_simple) / list ×3 — (1+z_k)^dt−1 / 1+F_k / Π_{j<k}(1+F_j)(첫 열 1) / Π_{j≥k} df_step_j — 검토자 Rf_dc r32·r33·r34·r38 원천 | compute_forward |
+| fwd | boot_fwd_pp / boot_fwd_annual | {c: RateVector} — 부트스트랩 격자 기간 선도 DF_{n−1}/DF_n−1(per_period_m{m}) / (1+F)^m−1(annual_eff) — Rf_dc r26·r27 | compute_forward |
 | fwd | negative_count / max_jump_bp | {c: int} / {c: float} — NEG_FWD(APPROVAL_REQUIRED) / SAWTOOTH(FWD_JUMP_WARN_BP, WARN) | compute_forward |
 | fwd | all_finite | bool — 게이트 선도비유한 | compute_forward |
 | fwd | rule / node_discount_conv / node_discount_reason | str\|None ×3 — TREE_FWD_RULE / NODE_DISCOUNT_CONV / `CONVENTION_REASONS["NODE_DISCOUNT_CONV"]` 복사 | compute_forward |
 | fwd | tenor_table | {c: list} — 테너 간 선도표(감사인 Q10-1) | compute_forward |
 | fwd_spot_check | max_abs_err_log / max_abs_err_prod | float\|None — 로그 공간 게이트(정합잔차비유한 → 정합실패, TOL_FWD_SPOT_FAIL) / ΠDF−DF 절대차(증빙 병기) | verify_fwd_spot |
 | fwd_spot_check | all_finite | bool | verify_fwd_spot |
-| fwd_spot_check | sample | dict\|None — 감사인 Q11 예시 1건(08_fwd_spot_sample.md 원천, AUDITOR_QA Q11). 키 미확인 | verify_fwd_spot |
+| fwd_spot_check | sample | dict\|None — 감사인 Q11 예시 1건 = RF 마지막 격자점 `{curve, step, t, prod_df_fwd, df_spot, diff_log, diff_prod}`(08_fwd_spot_sample.md 원천) | verify_fwd_spot |
+| fwd_spot_check | rows | {c: list[{step, t, prod_df_fwd, df_spot, diff_log, diff_prod}]} — 전 격자점 잔차(FWD_SPOT_CHECK 시트 원천) | verify_fwd_spot |
 | sensitivity | table | list — 교차 방법·공간·주기 DF 상대차표(주 커브 불변). 항목 키 미확인 | run_sensitivity |
 | sensitivity | max_rel_df_diff | float\|None — CROSS_METHOD_DF WARN | run_sensitivity |
 | sensitivity | freq_alt | dict — FREQ_SENSITIVITY_SET 변형 결과(초기값 빈 `NS()`). 항목 구조 미확인. 비어 있지 않으면 FREQ_SENSITIVITY WARN(value = `dict(freq_alt)`) | run_sensitivity |
@@ -142,7 +149,7 @@
 | result | fail_code | str\|None — `EDGE_CODES[(fail_node, fail_edge)]`(§5.1) | fail |
 | result | fail_reason | str\|None — `"<node>:<edge>"` | fail |
 | result | fail_detail | dict\|None — §5.2 | fail |
-| result | approved_state_path / approved_state_sha256 | str\|None / sha256\|None — approved_state.json 경로·해시(파일 저장·기록은 CLI 몫, 스텁은 미기록) | done(CLI 미구현) |
+| result | approved_state_path / approved_state_sha256 | str\|None / sha256\|None — approved_state.json 경로(base_dir 상대)·해시. `snapshot.save_terminal` 이 `done` 직후 기록(러너 몫, 노드 아님) | done → runner |
 | result | next_step_interface | dict\|None — 2단계 인터페이스, 값 복사가 아닌 경로 참조(§5.3, GRAPH_SPEC §9) | done |
 
 ## 2. `run` 접두사 상세
@@ -212,11 +219,11 @@ JSON 왕복으로 NS/dict·tuple/list 차이를 없애므로 메모리 state 와
 
 ### 3.5 스냅샷·상태 파일 경로 규칙 (GRAPH_SPEC §6·§10)
 
-파일 쓰기는 `graph/snapshot.py`(스냅샷 저장/로드·exit 3)·`app/cli.py`(명령행) 몫이며(BUILD_PROMPTS §2, 현재 미구현) 노드 스텁은 파일을 만들지 않는다.
+파일 쓰기는 `graph/snapshot.py`(스냅샷 저장/로드, `PAUSE_EXIT_CODE=3`)와 그것을 부르는 `app/runner.py`(CLI·서버 공용) 몫이며 노드는 파일을 만들지 않는다(예외: `export_evidence` 는 증빙 번들을 쓴다).
 
 - key = `<valuation_date>__<curve_set_id>`
-- 정지 스냅샷: `state/<key>/snapshot__<node>__<n>.json`, 저장 후 exit code 3. `<n>` 의 정의(정지 회차인지 `run.resume_n` 인지)는 코드에 없다 — 미확인(CLI 구현 시 확정).
-- 승인 완료 state: `approved_state.json`(`done`, 키 = key) → `result.approved_state_path / approved_state_sha256`. 드라이런은 쓰지 않는다.
+- 정지 스냅샷: `state/<key>/snapshot__<node>__<n>.json`, 저장 후 exit code 3. `<n>` = 그 노드의 정지 회차(같은 노드에서 다시 멈추면 2, 3 …; `snapshot.save_snapshot` 이 폴더의 기존 파일 수로 정한다).
+- 승인 완료 state: `approved_state.json`(`done`, 키 = key) + 사이드카 `approved_state.json.sha256`. 해시 원상 = 파일 바이트 그대로(파일 안의 `result.approved_state_sha256` 는 null); 메모리 state·API 응답에는 해시가 들어 있다. 검증: `sha256(approved_state.json) == 사이드카 값`. 드라이런은 쓰지 않는다.
 - 실패 state: `failed_state.json` + 부분 번들(`fail`).
 - 증빙 번들: `evidence/<key>/`(`export.dir`).
 - 스냅샷·승인 state·증빙은 커밋 제외(.gitignore)이되 삭제 금지(감사 증빙).

@@ -16,12 +16,21 @@ python cb_valuation/step1_curve/reference/test_interp_ref.py  # 보간 참조 �
 python -m unittest discover -s cb_valuation/step1_curve/tests -v
 ```
 
-## 실행 (앱 본체는 BUILD_PROMPTS 단계로 구현 중)
+## 앱 실행 (링크를 열면 화면이 뜬다)
 ```
-python -m cb_valuation.step1_curve.app.cli run --matrix <kisnet.csv> --valuation-date YYYY-MM-DD --profile <DEFAULT|PCHIP_TREE|KICPA_1130|REVIEWER_2024|EXCEL_KBI>
-python -m cb_valuation.step1_curve.app.cli resume --snapshot state/<key>/snapshot__<node>__<n>.json --decision approved --approver <이름> --comment "<문장>" [--ack CODE ...]
+start_app.bat                                          # 더블클릭 → 로컬 서버 + 브라우저 http://127.0.0.1:8765
+python -m cb_valuation.step1_curve.app.server --open   # 같은 것(포트 변경: --port 8888)
 ```
-`--profile` 은 필수다(보간법·프로필은 실행 시 사용자가 선택; 선택은 provenance 에 기록되고 입력 승인 화면에 표시된다).
+왼쪽 = 입력(프로필 선택 필수 → 매트릭스 붙여넣기 → 상품·출처) → 결과 표 → 승인 → 증빙, 오른쪽 = `EDGES` 그래프에서 **현재 노드·지나온 엣지가 색으로 표시**된다(정지 = 노란 승인 노드). "연습 데이터 불러오기" 로 fixture A(2025-12-31)를 채워 바로 돌려볼 수 있다. 서버는 127.0.0.1 전용이며 금리표는 PC 밖으로 나가지 않는다.
+
+초안 범위: DEFAULT(모드 A + 선형)·PCHIP_TREE(트리 격자 PCHIP/log_df) 프로필. KICPA_1130·REVIEWER_2024·EXCEL_KBI 는 화면에 "초안 미구현"으로 표시된다.
+
+## 명령행
+```
+python -m cb_valuation.step1_curve.app.cli run --matrix <kisnet.csv> --valuation-date YYYY-MM-DD --profile DEFAULT|PCHIP_TREE --maturity-date YYYY-MM-DD --rating BB+ --issuance 사모|공모 [--curve-set-id CB1 --operator 이름 --capture-path … --reported-rf 2.765 …]
+python -m cb_valuation.step1_curve.app.cli resume --snapshot state/<key>/snapshot__<node>__<n>.json --decision approved|rejected --approver <이름> --comment "<문장>" [--ack CODE ...]
+```
+정지(사람 승인 대기)는 exit code 3 이며 스냅샷 경로를 출력한다. `--profile` 은 필수다(보간법·프로필은 실행 시 사용자가 선택; 선택은 provenance 에 기록되고 입력 승인 화면에 표시된다). 산출물: `state/<평가기준일>__<세트>/`(스냅샷·approved_state.json), `evidence/<…>/`(01~12 + README_conventions.md + checklist_map.json + evidence.xlsx), `data/raw/<고시일>/`(원본 사본).
 
 ## 문서
 - 공통 규칙 `CLAUDE.md`, 1단계 세부 `cb_valuation/step1_curve/CLAUDE.md`, PRD `cb_valuation/step1_curve/PRD_step1.md`

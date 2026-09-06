@@ -29,5 +29,13 @@ FAIL → fail(`result.fail_code` = EDGE_CODES; 다중 노드 교차 규칙 INTER
 ## 참조 엑셀 결함 (수치·셀은 FORMULA_REFERENCE §3.1·§5.1·§9; 재현은 EXCEL_KBI 프로필에서만, 정상 모드에서는 수정)
 BOOT!G/V stale 하드코딩, L10 live + L11 stale 점프, MF_INTERPOL 좌측 원점 앵커·우측 Empty(0), R24:R25 '-'→0, 9M 미사용·3M 시드(RF_SEED_3M), 헤드라인 ceil_tenor(stale 5Y knot).
 
+## 앱 초안 구조 (2026-09-07; 실행: `start_app.bat` 또는 `python -m cb_valuation.step1_curve.app.server --open`)
+- `nodes/` 노드 구현(자기 접두사만) → `nodes.NODES_IMPL` 을 `run(state, C, nodes=NODES_IMPL)` 에 넘긴다. `graph/step1_graph.NODES` 는 스텁(graph_check 전용)이며 EDGES 는 하나다. 승인·sanity_check·done·fail·wait_for_human 은 step1_graph 함수 그대로.
+- `curve/` 순수 함수(interp = reference/interp_ref 재사용, bootstrap 모드 A, compounding, gridmap.CurveOnGrid(공간·외삽), forward). `io/` 매트릭스 파서·정규식 라벨(블록은 등급 순서 재시작으로 분할)·증빙 작성기(xlsx 는 XLSX_DC_BLOCKS).
+- `app/runner.py` 가 CLI(`app/cli.py`)·서버(`app/server.py` + `viewer.html`) 공용: prepare_state(입력 접두사 채움; 프로필 필수) → advance(run + 스냅샷/최종 저장, `graph/snapshot.py`) → decide_and_resume(set_decision → run(start)). 번들 루트는 `run.base_dir`(러너가 기록; 노드는 환경변수를 읽지 않는다 — graph_check 가 검사).
+- 초안 범위: DEFAULT·PCHIP_TREE(모드 A, PRICE_MODE par, TREE_FWD_RULE continuous_from_spot, EXTRAP flat/flat_forward). KICPA_1130(모드 B)·REVIEWER_2024(piecewise_quarter_step)·EXCEL_KBI 는 `Constants.PROFILES_IMPLEMENTED` 밖 → 화면에 "초안 미구현", `runner.prepare_state` 가 `nodes.unsupported(C)` 사전 게이트로 NotImplementedError(노드 안의 raise 는 도달 불가 방어).
+- 검토 반영(2026-09-07): 판단값은 전부 Constants(EPS_T·TOL_DF_MONOTONE·DF_RANGE·INTERP_METHOD_PRE·BLOCK_OF_ISSUANCE·RATING_ORDER·SENSITIVITY_COMBOS·PROFILES_IMPLEMENTED·BP_PER_UNIT·WEEKS_PER_YEAR); 증빙 작성기는 state 복사만(파생값은 노드가 기록); 격자 보간체 knot 왕복 게이트(엣지 `격자knot왕복불일치`); `run()` 은 승인·종단·sanity 노드 함수 항등을 검사; graph_check 가 실제 노드 구현(NODES_IMPL)의 쓰기 접두사도 추적; approved_state.json 해시는 사이드카 `.sha256`(파일 바이트 원상).
+- 엔진 테스트 `tests/test_app_pipeline.py`(fixture A done 경로·게이트 허용오차·프로필 필수·결정성·PCHIP_TREE). 실측(fixture A DEFAULT): RF spot_annual 0.5Y 0.0240934 / 10Y 0.0343360, RD 10Y 0.1585730 = recompute_boot live 와 일치.
+
 ## 금지 목록
 노드 내 라우팅, 타 노드 필드 쓰기, per_period→exp(), 결측 0 대입, 상수 하드코딩, 테스트 안 숫자 리터럴(상수 참조), constants 안 테스트 훅, Constants 상속 서브클래스(with_profile/items() 복사만), EXCEL_KBI 밖 엑셀 결함 재현, 출처 없는 공식, 완료 메시지만 있는 보고.

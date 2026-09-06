@@ -37,7 +37,9 @@
 ```
 CLAUDE.md                      (이 파일: 공통 규칙)
 .claude/agents|commands|skills (에이전트 5·커맨드 10·스킬 1)
-cb_valuation/step1_curve/      1단계 — CLAUDE.md(세부), PRD_step1.md, graph/(step1_graph.py, graph_check.py, export_spec.py), docs/, tests/(fixtures/, CLAUDE.md), reference/(검증된 참조 구현 + 엑셀 덤프 xl_*.txt)
+cb_valuation/step1_curve/      1단계 — CLAUDE.md(세부), PRD_step1.md, graph/(step1_graph.py=EDGES·Constants·run, graph_check.py, export_spec.py, snapshot.py), nodes/(노드 구현, NODES_IMPL), curve/(interp·bootstrap·compounding·gridmap·forward), io/(matrix_parser, label_regex, evidence_writer), app/(runner.py, cli.py, server.py, viewer.html), docs/, tests/(fixtures/, test_app_pipeline.py, CLAUDE.md), reference/(검증된 참조 구현 + 엑셀 덤프 xl_*.txt)
+start_app.bat                  앱 실행(로컬 서버 + 브라우저)
+state/, evidence/, data/raw/   실행 산출물(커밋 제외, 삭제 금지)
 ref/                           원천 자료 (커밋 제외) — ref/graph_engineering/ 방법론 자료, 그 외 고객 엑셀·보고서·한공회 사례
 pyproject.toml, requirements.txt, README.md   배포(pip install .; openpyxl 필수)
 ```

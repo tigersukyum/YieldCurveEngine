@@ -44,17 +44,17 @@ POLICY = """
 - 재개: `cli resume --snapshot <path> --decision approved|rejected --approver <이름> --comment "<문장>" [--ack CODE ...]` → `C = Constants.with_profile(state.run.profile)` 복원 → `set_decision()` → `run(state, C, start=run.paused_at_node)`. `start` 는 승인 노드이며 `paused_at_node` 와 같아야 하고(아니면 ValueError), 계산 노드는 재실행되지 않으며 CALC_PREFIXES 필드는 바이트 동일해야 한다(graph_check 재개 검사). 재개마다 `run.resume_n` 증가, `run.path` 항목에 시각·회차 기록.
 - 변조 감지: `Constants.fingerprint()`(결정적 직렬화, 프로세스 무관) ≠ `run.constants_fingerprint` → `상수변경감지`; `hash_of(SNAPSHOT_SCOPE)` ≠ `snapshot_sha256` → `입력변조감지`/`계산상태변조감지`. SNAPSHOT_SCOPE 는 approve_exception 에 approval_input 을, approve_curve 에 approval_input·approval_exception 을 포함해 이전 승인 기록의 편집도 잡는다.
 - 거절: 어느 승인이든 → fail. `result.fail_reason='<node>:거절'`, `result.fail_detail={node, edge, code, approver, comment, timestamp}`, 부분 번들 저장. 재시도는 새 run_id 로 처음부터.
-- 기록: 승인자·ISO 시각·코멘트·flags_seen·acknowledged_codes·snapshot_sha256·history → state, 12_approvals.json, APPROVALS 시트, approved_state.json. 스냅샷·승인 state 는 커밋 제외(.gitignore)이되 삭제 금지. 승인은 CLI `resume` 로만 이루어진다(viewer.html 은 명령 문자열 생성만). AI 는 approval_* 접근이 없다.
+- 기록: 승인자·ISO 시각·코멘트·flags_seen·acknowledged_codes·snapshot_sha256·history → state, 12_approvals.json, APPROVALS 시트, approved_state.json. 스냅샷·승인 state 는 커밋 제외(.gitignore)이되 삭제 금지. 승인의 진입점은 두 곳뿐이며 둘 다 `set_decision()` 을 호출한다: CLI `resume`, 로컬 앱(`app/server.py` `/api/decision` — viewer.html 의 승인 버튼은 승인자·코멘트·ack 를 그대로 보낼 뿐 판단하지 않는다). AI 는 approval_* 접근이 없다.
 - 드라이런(`/curve-validate`): 하네스가 approver='dry-run' 으로 입력 승인만 자동 기록하고 approve_exception/approve_curve 정지에서 보고 후 종료한다. approved_state.json 을 쓰지 않는다.
 
 ## 7. AI 의 역할 (해석까지)
 
 허용: (a) `interpret_labels` 노드에서 LABEL_GRAMMAR 정규식 미매칭 행의 **라벨 문자열만** LLM 에 정규화 제안 요청(AI_ENABLED=True + API 키가 있을 때만; 페이로드에 숫자가 있으면 assert). 제안은 정규식 재검증을 통과해야 parser='llm' 으로 채택되고 LLM_PARSER_USED WARN 이 남는다. (b) 증빙·화면의 한국어 설명문(state 값을 문자열로 삽입, 숫자 생성 금지).
-금지: YTM 값 읽기·요약, spot/DF/forward 계산, par 통과·심각도·헤드라인 판정, 커브 채택, 승인 필드 쓰기. 기본 경로는 정규식이며 API 키 없이 fixture A~E 전부 완주해야 한다. 고객 금리표·식별정보는 외부 LLM 으로 보내지 않는다.
+금지: YTM 값 읽기·요약, spot/DF/forward 계산, par 통과·심각도·헤드라인 판정, 커브 채택, 승인 필드 쓰기. **앱 초안: `io/label_ai.py` 미구현 — `AI_ENABLED=True` 는 러너 사전 게이트와 `interpret_labels` 가 거부한다(정규식 경로만).** 기본 경로는 정규식이며 API 키 없이 fixture A~E 전부 완주해야 한다. 고객 금리표·식별정보는 외부 LLM 으로 보내지 않는다.
 
 ## 8. 화면 (그래프·state 다음에 붙인다)
 
-`app/viewer.html`(외부 라이브러리 없음)은 state JSON 과 `graph/edges_export.json` 만 읽는다. 왼쪽: 매트릭스·선택 행·BOOT/BM 열 순서의 결과표(basis 헤더)·par 잔차·Q11 예시·flag. 오른쪽: EDGES 그래프에서 현재 노드·지나온 엣지(run.path) 강조 + state JSON. 화면에 흐름 로직 없음(승인 버튼은 resume 명령 문자열 생성만). 지나온 경로(run.path: from, 조건, to, 시각, 재개 회차)가 그대로 감사조서다.
+`app/server.py`(표준 라이브러리 HTTP, 127.0.0.1 전용; `start_app.bat` 또는 `python -m cb_valuation.step1_curve.app.server --open`)가 `app/viewer.html`(외부 라이브러리 없음)을 띄운다. 화면은 `/api/graph`(= `export_edges_json()` + 노드 docstring + PROFILE_DESCRIPTIONS)와 `/api/state`(state JSON)만 읽는다. 왼쪽: 입력(프로필 선택 필수·매트릭스·출처·상품) → 결과(선택 행·마디·부트스트랩 표(basis 헤더)·트리 격자·Q11 예시·헤드라인·flag·민감도) → 승인(flags_seen·코드별 ack·승인자·코멘트) → 증빙(파일·체크리스트) → state JSON. 오른쪽: EDGES 그래프(주 사슬 세로, fail 왼쪽, wait_for_human 오른쪽, done 아래)에 현재 노드·정지 노드·지나온 엣지(run.path)를 색으로 강조하고 조건 이름을 라벨로 붙인다. 화면에 흐름 로직 없음 — 버튼은 `/api/run`(입력 → `run()`)과 `/api/decision`(`set_decision()` → `run(start=paused_at_node)`)을 호출만 한다. 지나온 경로(run.path: from, 조건, to, 시각, 재개 회차)가 그대로 감사조서다.
 
 ## 9. 2단계 인터페이스
 

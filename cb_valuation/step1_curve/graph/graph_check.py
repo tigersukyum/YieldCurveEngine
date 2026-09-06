@@ -122,7 +122,7 @@ def happy_state(Cc=C):
     s.bootstrap.update(status={"RF": "OK", "RD": "OK"}, df_valid={"RF": True, "RD": True})
     s.par_check.update(all_finite=True, max_abs_err=1.3e-15)
     s.conv.update(all_finite=True, roundtrip_max_err=2e-16)
-    s.tree.update(df_finite=True, df_range_ok=True, df_monotone_ok=True, extrap_left_flat_steps={"RF": [0, 1], "RD": [0]})
+    s.tree.update(df_finite=True, df_range_ok=True, df_monotone_ok=True, knot_roundtrip_max_err=0.0, extrap_left_flat_steps={"RF": [0, 1], "RD": [0]})
     s.fwd.update(all_finite=True)
     s.fwd_spot_check.update(all_finite=True, max_abs_err_log=2e-16)
     s.export.cell_map = {k: "evidence.xlsx!SHEET!A1" for k in Cc.EVIDENCE_REQUIRED_ITEMS}
@@ -228,6 +228,7 @@ SCENARIOS = [
     ("E48", "프로필 미선택(method_choice.profile=None) → 출처불완전", C, lambda s: (s.provenance.method_choice.update(profile=None), s)[1], {}, None, "출처불완전", "failed"),
     ("E49", "선택한 프로필 ≠ 실행 상수 프로필", C, lambda s: (s.provenance.method_choice.update(profile="PCHIP_TREE"), s)[1], {}, None, "프로필불일치", "failed"),
     ("E50", "xlsx 미생성(XLSX_REQUIRED)", C, lambda s: (s.export.update(xlsx_written=False), s)[1], APPROVE_ALL, None, "xlsx누락", "failed"),
+    ("E51", "트리 격자 보간체 knot 왕복 2×TOL", C, lambda s: (s.tree.update(knot_roundtrip_max_err=2 * C.TOL_KNOT_ROUNDTRIP), s)[1], {"input": ("approved", [])}, None, "격자knot왕복불일치", "failed"),
 ]
 
 
@@ -321,30 +322,110 @@ def dynamic_checks():
     return errs
 
 
-# ----------------------------------------------------------------------------- 노드 쓰기 추적(자기 접두사만)
+# ----------------------------------------------------------------------------- 노드 쓰기 추적(자기 접두사만) — 스텁(NODES)과 실제 구현(nodes.NODES_IMPL) 둘 다
 class _Tracking(G.NS):
-    def __init__(self, prefix, log, data):
-        super().__init__(data); object.__setattr__(self, "_prefix", prefix); object.__setattr__(self, "_log", log)
+    """중첩 dict 까지 감싸서 최상위 접두사 이름으로 쓰기를 기록한다. _who 는 현재 실행 중인 노드 id 를 담는 공유 dict."""
+    def __init__(self, prefix, log, who, data):
+        super().__init__({k: _track(prefix, log, who, v) for k, v in data.items()})
+        object.__setattr__(self, "_prefix", prefix); object.__setattr__(self, "_log", log); object.__setattr__(self, "_who", who)
+    def _mark(self):
+        if self._who.get("node") is not None:
+            self._log.setdefault(self._who["node"], set()).add(self._prefix)
     def __setattr__(self, k, v):
-        self._log.add(self._prefix); dict.__setitem__(self, k, v)
+        self._mark(); dict.__setitem__(self, k, v)
     def __setitem__(self, k, v):
-        self._log.add(self._prefix); dict.__setitem__(self, k, v)
+        self._mark(); dict.__setitem__(self, k, v)
     def update(self, *a, **kw):
-        self._log.add(self._prefix); dict.update(self, *a, **kw)
+        self._mark(); dict.update(self, *a, **kw)
+
+
+def _track(prefix, log, who, v):
+    if isinstance(v, dict):
+        return _Tracking(prefix, log, who, v)
+    if isinstance(v, list):
+        return [_track(prefix, log, who, x) for x in v]
+    return v
+
+
+def _tracked_state(state, log, who):
+    return G.NS({k: _Tracking(k, log, who, v) for k, v in json.loads(G.canonical_json(state)).items()})
+
+
+def _wrap_registry(registry, who):
+    out = {}
+    for nid, (ko, pre, fn) in registry.items():
+        def mk(nid, fn):
+            def w(s, C):
+                who["node"] = nid
+                try:
+                    fn(s, C)
+                finally:
+                    who["node"] = None
+            return w
+        out[nid] = (ko, pre, fn if nid in C.HUMAN_NODES + C.TERMINAL_NODES + ("sanity_check",) else mk(nid, fn))
+    return out
 
 
 def ownership_checks():
     errs = []
-    base = drive(happy_state(), APPROVE_ALL)  # 채워진 state(done 까지 간 경로 포함)
+    # (a) 스텁: 채워진 state 위에서 노드 하나씩 실행
+    base = drive(happy_state(), APPROVE_ALL)
     for nid, (_, prefixes, fn) in G.NODES.items():
-        log = set()
-        s = G.NS({k: _Tracking(k, log, G.load_state(v)) for k, v in json.loads(G.canonical_json(base)).items()})
+        log, who = {}, {"node": nid}
+        s = _tracked_state(base, log, who)
         try:
             fn(s, C)
         except Exception as e:  # noqa: BLE001
             errs.append(f"[{nid}] 스텁 실행 예외: {e}"); continue
-        bad = log - set(prefixes)
-        if bad: errs.append(f"[{nid}] 자기 접두사 {prefixes} 밖 쓰기: {sorted(bad)}")
+        bad = log.get(nid, set()) - set(prefixes)
+        if bad: errs.append(f"[스텁 {nid}] 자기 접두사 {prefixes} 밖 쓰기: {sorted(bad)}")
+    # (b) 실제 구현: fixture A 로 정상 경로를 끝까지 돌리며 노드별 쓰기 접두사 기록(승인·종단·sanity 는 step1_graph 함수라 제외)
+    try:
+        try:
+            from ..nodes import NODES_IMPL
+            from ..app import runner as RUN
+            from ..graph import step1_graph as G2  # NODES_IMPL 과 같은 모듈 객체(스크립트 실행 시 이중 임포트 방지)
+        except ImportError:
+            root = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))  # …/cb_valuation/step1_curve/graph → 저장소 루트
+            sys.path.insert(0, root)
+            from cb_valuation.step1_curve.nodes import NODES_IMPL
+            from cb_valuation.step1_curve.app import runner as RUN
+            from cb_valuation.step1_curve.graph import step1_graph as G2
+    except Exception as e:  # noqa: BLE001
+        return errs + [f"[구현] nodes/runner 임포트 실패: {e}"]
+    import tempfile, shutil
+    fixture = os.path.join(os.path.dirname(HERE), "tests", "fixtures", "kisnet_matrix_20251231.csv")
+    if not os.path.exists(fixture):
+        return errs + ["[구현] fixture A 없음 — 실제 노드 쓰기 추적 생략"]
+    tmp = tempfile.mkdtemp(prefix="gc_own_")
+    try:
+        with open(fixture, encoding="utf-8-sig") as fh:
+            text = fh.read()
+        form = {"profile": "DEFAULT", "matrix_text": text, "valuation_date": "2025-12-31", "curve_date": "2025-12-31", "curve_set_id": "GC", "operator": "graph_check",
+                "source_agency": "KIS", "downloaded_at": "2025-12-31T09:00:00+09:00", "instrument": {"maturity_date": "2029-06-21", "issuance_type": "사모", "rating": "BB+"}}
+        s0, Cc = RUN.prepare_state(form, tmp)
+        log, who = {}, {"node": None}
+        s = _tracked_state(s0, log, who)
+        reg = _wrap_registry(NODES_IMPL, who)
+        s = G2.run(s, Cc, nodes=reg)
+        while s.run.status == "paused":
+            kind = s.run.paused_at_node.replace("approve_", "")
+            ack = [f["code"] for f in s[f"approval_{kind}"].flags_seen] if kind == "exception" else []
+            G2.set_decision(s, kind, "approved", "graph_check", "auto", ack)
+            s = G2.run(s, Cc, start=s.run.paused_at_node, nodes=reg)
+        if s.run.status != "done": errs.append(f"[구현] fixture A 정상 경로가 done 에 도달하지 않음: {s.run.status} {path_names(s)[-3:]}")
+        for nid, (_, prefixes, _) in NODES_IMPL.items():
+            bad = log.get(nid, set()) - set(prefixes)
+            if bad: errs.append(f"[구현 {nid}] 자기 접두사 {prefixes} 밖 쓰기: {sorted(bad)}")
+        # 노드 소스에 프로세스 전역 입력(환경변수) 금지
+        ndir = os.path.join(os.path.dirname(HERE), "nodes")
+        for f in sorted(os.listdir(ndir)):
+            if f.endswith(".py") and "os.environ" in open(os.path.join(ndir, f), encoding="utf-8").read():
+                errs.append(f"[구현] nodes/{f}: os.environ 사용(노드 입력은 state·Constants 뿐)")
+    except Exception as e:  # noqa: BLE001
+        errs.append(f"[구현] 실행 예외: {type(e).__name__}: {e}")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     return errs
 
 

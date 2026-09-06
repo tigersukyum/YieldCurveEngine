@@ -1,6 +1,6 @@
 # GRAPH_SPEC — 1단계 이자율 커브 그래프 (자동 생성: graph/export_spec.py ← graph/step1_graph.py + graph_check.SCENARIOS)
 
-노드 22개 · 엣지 68개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 54개 · 상수 fingerprint `a27d380595e6…` · spec `ab062447a0b9…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
+노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `0ff6ac78bf7a…` · spec `042ab5356dee…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
 
 흐름의 유일한 정의는 `graph/step1_graph.py` 의 `EDGES` 배열이다. 이 문서는 그 배열을 사람이 읽기 좋게 펼친 것이며, 불일치가 있으면 코드가 우선한다(`python cb_valuation/step1_curve/graph/export_spec.py` 로 재생성). `python cb_valuation/step1_curve/graph/graph_check.py` 가 불변식·두 갈래 시나리오·노드 쓰기 추적·상수 지문 결정성을 검사한다.
 
@@ -14,12 +14,12 @@
 | 3 | `approve_input` | 입력 승인(필수) | `approval_input` | approval_input.requested_at·snapshot_sha256·flags_seen 만 처음 한 번 기록(멱등). 결정 필드는 set_decision() 전용. |
 | 4 | `select_rows` | 행 선택 | `rows` | rows.*: RF=국고채, RD=회사채+등급(노칭)+블록(BLOCK_FALLBACK), 전기 등급·블록 일관성, ytm_pct×PCT_TO_DEC → ytm RateVector(basis nominal_m{RF_FREQ}/nominal_m{RD_FREQ} ∈ BASIS), knot_tenors=C.knot_tenors(curve), missing_knots. |
 | 5 | `build_grid` | 격자 생성 | `grid` | grid.*: knots(≤horizon), boot_times(1/m 격자), remaining_years(DAYCOUNT), tree(N,T,dt,event_times). |
-| 6 | `interpolate` | 보간 | `interp` | interp.*: INTERP_TABLE 플러그인 인스턴스화(method=C.INTERP_METHOD, space=C.INTERP_SPACE_GRID), 모드 A 면 이표격자 c_n(COUPON_CONV), knot 왕복 검사, 외삽 사용 기록. |
+| 6 | `interpolate` | 보간 | `interp` | interp.*: method(트리 격자용 INTERP_METHOD)·method_pre(이표격자용 INTERP_METHOD_PRE) 기록, 모드 A 면 이표격자 YTM(ytm_on_coupon_grid) → c_n(COUPON_CONV, par_coupon_on_grid), knot 왕복 검사, 외삽 사용 기록. |
 | 7 | `bootstrap` | 부트스트랩(RF·RD) | `bootstrap` | bootstrap.*: 모드 A DF_n=(1−c_nΣDF)/(1+c_n) (BOOT!H/I 동치) / 모드 B knot brent + 중간 이표일 보간(+Gauss-Seidel), df_valid, solver_log. |
 | 8 | `verify_par` | 파 검증(핵심 게이트) | `par_check` | par_check.*: 모든 만기 Σ c·DF + DF_n − 목표가격 (RF/RD), max_abs_err, 미사용 knot 잔차 INFO. |
 | 9 | `convert_compounding` | 복리 변환 | `conv` | conv.*: annual=expm1(m·log1p(s)), cont=m·log1p(s) ; 왕복 검사 ; basis annual_eff/continuous (§3.7.4.4 구조적 차단). |
-| 10 | `map_tree_grid` | 트리 격자 매핑 | `tree` | tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위·단조, 외삽 스텝 사실 기록(판정 없음), 사용한 method/space 기록. |
-| 11 | `compute_forward` | 선도금리 산출 | `fwd` | fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=1/(1+F) [①], F_i=expm1(f dt), 연환산, negative_count, max_jump_bp, 테너간 선도표(Q10-1). |
+| 10 | `map_tree_grid` | 트리 격자 매핑 | `tree` | tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid(표시용, INTERP_METHOD_PRE). |
+| 11 | `compute_forward` | 선도금리 산출 | `fwd` | fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=(1+f)^(−dt) [① XL BM F열], F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1). |
 | 12 | `verify_fwd_spot` | 선도-현물 정합(Q11) | `fwd_spot_check` | fwd_spot_check.*: \|Σ_{k≤i}(−f_k dt_k) − ln DF_spot(t_i)\| 로그 공간 게이트 + ΠDF−DF 절대차 + Q11 예시. |
 | 13 | `run_sensitivity` | 민감도 분석 | `sensitivity` | sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_KBI 면 excel_recon. |
 | 14 | `compute_headline` | 헤드라인 산출 | `headline` | headline.*: HEADLINE_RULE 잔여만기 YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None). |
@@ -71,38 +71,39 @@
 | 33 | `convert_compounding` | 변환비유한 | `not (s.conv.all_finite and _fin(s.conv.roundtrip_max_err))` | `fail` | COMP_NONFINITE |
 | 34 | `convert_compounding` | 왕복변환불일치 | `s.conv.roundtrip_max_err > C.TOL_ROUNDTRIP_COMP` | `fail` | COMP_ROUNDTRIP |
 | 35 | `convert_compounding` | 변환완료 | `ALWAYS` | `map_tree_grid` |  |
-| 36 | `map_tree_grid` | 트리DF비유한 | `not s.tree.df_finite` | `fail` | TREE_DF_NONFINITE |
-| 37 | `map_tree_grid` | 엑셀제로외삽_정상모드 | `s.tree.excel_zero_used and not C.EXCEL_REPLICATE` | `fail` | EXCEL_ZERO_OUTSIDE_REPLICATE |
-| 38 | `map_tree_grid` | DF범위_또는_단조위반 | `not (s.tree.df_range_ok and s.tree.df_monotone_ok)` | `fail` | DF_RANGE_OR_MONOTONE |
-| 39 | `map_tree_grid` | 격자매핑완료 | `ALWAYS` | `compute_forward` |  |
-| 40 | `compute_forward` | 선도비유한 | `not s.fwd.all_finite` | `fail` | FWD_NONFINITE |
-| 41 | `compute_forward` | 선도완료 | `ALWAYS` | `verify_fwd_spot` |  |
-| 42 | `verify_fwd_spot` | 정합잔차비유한 | `not (s.fwd_spot_check.all_finite and _fin(s.fwd_spot_check.max_abs_err_log))` | `fail` | FWD_SPOT_NONFINITE |
-| 43 | `verify_fwd_spot` | 정합실패 | `s.fwd_spot_check.max_abs_err_log > C.TOL_FWD_SPOT_FAIL` | `fail` | FWD_SPOT_MISMATCH |
-| 44 | `verify_fwd_spot` | 정합통과 | `ALWAYS` | `run_sensitivity` |  |
-| 45 | `run_sensitivity` | 민감도완료 | `ALWAYS` | `compute_headline` |  |
-| 46 | `compute_headline` | 헤드라인미비교 | `(s.headline.reported_rf is not None or s.headline.reported_rd is not None) and s.headline.match_ok is None` | `fail` | HEADLINE_NOT_COMPARED |
-| 47 | `compute_headline` | 헤드라인완료 | `ALWAYS` | `sanity_check` |  |
-| 48 | `sanity_check` | FAIL플래그존재 | `len(s.sanity.fail) > 0` | `fail` | SANITY_FAIL |
-| 49 | `sanity_check` | 승인필요플래그존재 | `len(s.sanity.approval_required) > 0` | `approve_exception` |  |
-| 50 | `sanity_check` | 플래그없음 | `ALWAYS` | `approve_curve` |  |
-| 51 | `approve_exception` | 거절 | `s.approval_exception.decision == "rejected"` | `fail` | APPROVAL_REJECTED |
-| 52 | `approve_exception` | 결정선행 | `s[f"approval_{kind}"].decision is not None and s[f"approval_{kind}"].timestamp is not None and \ (s[f"approval_{kind}"].requested_at is None or s[f"approval_{kind}"].timestamp < s[f"approval_{kind}"].requested_at)` | `fail` | DECISION_BEFORE_REQUEST |
-| 53 | `approve_exception` | 상수변경감지 | `s.approval_exception.decision is not None and C.fingerprint() != s.run.constants_fingerprint` | `fail` | CONSTANTS_CHANGED |
-| 54 | `approve_exception` | 계산상태변조감지 | `s.approval_exception.decision is not None and hash_of(s, C.SNAPSHOT_SCOPE["approve_exception"]) != s.approval_exception.snapshot_sha256` | `fail` | STATE_TAMPERED |
-| 55 | `approve_exception` | 미확인코드잔존 | `s.approval_exception.decision == "approved" and bool({f["code"] for f in s.sanity.approval_required} - set(s.approval_exception.acknowledged_codes))` | `wait_for_human` |  |
-| 56 | `approve_exception` | 승인 | `s.approval_exception.decision == "approved"` | `approve_curve` |  |
-| 57 | `approve_exception` | 대기 | `ALWAYS` | `wait_for_human` |  |
-| 58 | `approve_curve` | 거절 | `s.approval_curve.decision == "rejected"` | `fail` | APPROVAL_REJECTED |
-| 59 | `approve_curve` | 결정선행 | `s[f"approval_{kind}"].decision is not None and s[f"approval_{kind}"].timestamp is not None and \ (s[f"approval_{kind}"].requested_at is None or s[f"approval_{kind}"].timestamp < s[f"approval_{kind}"].requested_at)` | `fail` | DECISION_BEFORE_REQUEST |
-| 60 | `approve_curve` | 상수변경감지 | `s.approval_curve.decision is not None and C.fingerprint() != s.run.constants_fingerprint` | `fail` | CONSTANTS_CHANGED |
-| 61 | `approve_curve` | 계산상태변조감지 | `s.approval_curve.decision is not None and hash_of(s, C.SNAPSHOT_SCOPE["approve_curve"]) != s.approval_curve.snapshot_sha256` | `fail` | STATE_TAMPERED |
-| 62 | `approve_curve` | 승인 | `s.approval_curve.decision == "approved"` | `export_evidence` |  |
-| 63 | `approve_curve` | 대기 | `ALWAYS` | `wait_for_human` |  |
-| 64 | `export_evidence` | 쓰기오류 | `len(s.export.errors) > 0` | `fail` | EXPORT_ERROR |
-| 65 | `export_evidence` | xlsx누락 | `C.XLSX_REQUIRED and not s.export.xlsx_written` | `fail` | XLSX_MISSING |
-| 66 | `export_evidence` | 증빙불완전 | `not s.export.checklist_all_present` | `fail` | EVIDENCE_INCOMPLETE |
-| 67 | `export_evidence` | 내보내기완료 | `ALWAYS` | `done` |  |
+| 36 | `map_tree_grid` | 트리DF비유한 | `not (s.tree.df_finite and _fin(s.tree.knot_roundtrip_max_err))` | `fail` | TREE_DF_NONFINITE |
+| 37 | `map_tree_grid` | 격자knot왕복불일치 | `s.tree.knot_roundtrip_max_err > C.TOL_KNOT_ROUNDTRIP` | `fail` | TREE_KNOT_ROUNDTRIP |
+| 38 | `map_tree_grid` | 엑셀제로외삽_정상모드 | `s.tree.excel_zero_used and not C.EXCEL_REPLICATE` | `fail` | EXCEL_ZERO_OUTSIDE_REPLICATE |
+| 39 | `map_tree_grid` | DF범위_또는_단조위반 | `not (s.tree.df_range_ok and s.tree.df_monotone_ok)` | `fail` | DF_RANGE_OR_MONOTONE |
+| 40 | `map_tree_grid` | 격자매핑완료 | `ALWAYS` | `compute_forward` |  |
+| 41 | `compute_forward` | 선도비유한 | `not s.fwd.all_finite` | `fail` | FWD_NONFINITE |
+| 42 | `compute_forward` | 선도완료 | `ALWAYS` | `verify_fwd_spot` |  |
+| 43 | `verify_fwd_spot` | 정합잔차비유한 | `not (s.fwd_spot_check.all_finite and _fin(s.fwd_spot_check.max_abs_err_log))` | `fail` | FWD_SPOT_NONFINITE |
+| 44 | `verify_fwd_spot` | 정합실패 | `s.fwd_spot_check.max_abs_err_log > C.TOL_FWD_SPOT_FAIL` | `fail` | FWD_SPOT_MISMATCH |
+| 45 | `verify_fwd_spot` | 정합통과 | `ALWAYS` | `run_sensitivity` |  |
+| 46 | `run_sensitivity` | 민감도완료 | `ALWAYS` | `compute_headline` |  |
+| 47 | `compute_headline` | 헤드라인미비교 | `(s.headline.reported_rf is not None or s.headline.reported_rd is not None) and s.headline.match_ok is None` | `fail` | HEADLINE_NOT_COMPARED |
+| 48 | `compute_headline` | 헤드라인완료 | `ALWAYS` | `sanity_check` |  |
+| 49 | `sanity_check` | FAIL플래그존재 | `len(s.sanity.fail) > 0` | `fail` | SANITY_FAIL |
+| 50 | `sanity_check` | 승인필요플래그존재 | `len(s.sanity.approval_required) > 0` | `approve_exception` |  |
+| 51 | `sanity_check` | 플래그없음 | `ALWAYS` | `approve_curve` |  |
+| 52 | `approve_exception` | 거절 | `s.approval_exception.decision == "rejected"` | `fail` | APPROVAL_REJECTED |
+| 53 | `approve_exception` | 결정선행 | `s[f"approval_{kind}"].decision is not None and s[f"approval_{kind}"].timestamp is not None and \ (s[f"approval_{kind}"].requested_at is None or s[f"approval_{kind}"].timestamp < s[f"approval_{kind}"].requested_at)` | `fail` | DECISION_BEFORE_REQUEST |
+| 54 | `approve_exception` | 상수변경감지 | `s.approval_exception.decision is not None and C.fingerprint() != s.run.constants_fingerprint` | `fail` | CONSTANTS_CHANGED |
+| 55 | `approve_exception` | 계산상태변조감지 | `s.approval_exception.decision is not None and hash_of(s, C.SNAPSHOT_SCOPE["approve_exception"]) != s.approval_exception.snapshot_sha256` | `fail` | STATE_TAMPERED |
+| 56 | `approve_exception` | 미확인코드잔존 | `s.approval_exception.decision == "approved" and bool({f["code"] for f in s.sanity.approval_required} - set(s.approval_exception.acknowledged_codes))` | `wait_for_human` |  |
+| 57 | `approve_exception` | 승인 | `s.approval_exception.decision == "approved"` | `approve_curve` |  |
+| 58 | `approve_exception` | 대기 | `ALWAYS` | `wait_for_human` |  |
+| 59 | `approve_curve` | 거절 | `s.approval_curve.decision == "rejected"` | `fail` | APPROVAL_REJECTED |
+| 60 | `approve_curve` | 결정선행 | `s[f"approval_{kind}"].decision is not None and s[f"approval_{kind}"].timestamp is not None and \ (s[f"approval_{kind}"].requested_at is None or s[f"approval_{kind}"].timestamp < s[f"approval_{kind}"].requested_at)` | `fail` | DECISION_BEFORE_REQUEST |
+| 61 | `approve_curve` | 상수변경감지 | `s.approval_curve.decision is not None and C.fingerprint() != s.run.constants_fingerprint` | `fail` | CONSTANTS_CHANGED |
+| 62 | `approve_curve` | 계산상태변조감지 | `s.approval_curve.decision is not None and hash_of(s, C.SNAPSHOT_SCOPE["approve_curve"]) != s.approval_curve.snapshot_sha256` | `fail` | STATE_TAMPERED |
+| 63 | `approve_curve` | 승인 | `s.approval_curve.decision == "approved"` | `export_evidence` |  |
+| 64 | `approve_curve` | 대기 | `ALWAYS` | `wait_for_human` |  |
+| 65 | `export_evidence` | 쓰기오류 | `len(s.export.errors) > 0` | `fail` | EXPORT_ERROR |
+| 66 | `export_evidence` | xlsx누락 | `C.XLSX_REQUIRED and not s.export.xlsx_written` | `fail` | XLSX_MISSING |
+| 67 | `export_evidence` | 증빙불완전 | `not s.export.checklist_all_present` | `fail` | EVIDENCE_INCOMPLETE |
+| 68 | `export_evidence` | 내보내기완료 | `ALWAYS` | `done` |  |
 
 ## 3. 다이어그램 (mermaid; 승인 노드=스타디움, 종단=이중 사각형)
 
@@ -167,6 +168,7 @@ flowchart TD
   convert_compounding -->|왕복변환불일치| fail
   convert_compounding -->|변환완료| map_tree_grid
   map_tree_grid -->|트리DF비유한| fail
+  map_tree_grid -->|격자knot왕복불일치| fail
   map_tree_grid -->|엑셀제로외삽_정상모드| fail
   map_tree_grid -->|DF범위_또는_단조위반| fail
   map_tree_grid -->|격자매핑완료| compute_forward
@@ -258,6 +260,7 @@ flowchart TD
 | E48 | 프로필 미선택(method_choice.profile=None) → 출처불완전 | DEFAULT | 출처불완전 | failed |
 | E49 | 선택한 프로필 ≠ 실행 상수 프로필 | DEFAULT | 프로필불일치 | failed |
 | E50 | xlsx 미생성(XLSX_REQUIRED) | DEFAULT | xlsx누락 | failed |
+| E51 | 트리 격자 보간체 knot 왕복 2×TOL | DEFAULT | 격자knot왕복불일치 | failed |
 
 ## 5. 심각도 표 (판정 위치 = 전용 엣지 또는 sanity_check 한 곳)
 
@@ -284,17 +287,17 @@ flowchart TD
 - 재개: `cli resume --snapshot <path> --decision approved|rejected --approver <이름> --comment "<문장>" [--ack CODE ...]` → `C = Constants.with_profile(state.run.profile)` 복원 → `set_decision()` → `run(state, C, start=run.paused_at_node)`. `start` 는 승인 노드이며 `paused_at_node` 와 같아야 하고(아니면 ValueError), 계산 노드는 재실행되지 않으며 CALC_PREFIXES 필드는 바이트 동일해야 한다(graph_check 재개 검사). 재개마다 `run.resume_n` 증가, `run.path` 항목에 시각·회차 기록.
 - 변조 감지: `Constants.fingerprint()`(결정적 직렬화, 프로세스 무관) ≠ `run.constants_fingerprint` → `상수변경감지`; `hash_of(SNAPSHOT_SCOPE)` ≠ `snapshot_sha256` → `입력변조감지`/`계산상태변조감지`. SNAPSHOT_SCOPE 는 approve_exception 에 approval_input 을, approve_curve 에 approval_input·approval_exception 을 포함해 이전 승인 기록의 편집도 잡는다.
 - 거절: 어느 승인이든 → fail. `result.fail_reason='<node>:거절'`, `result.fail_detail={node, edge, code, approver, comment, timestamp}`, 부분 번들 저장. 재시도는 새 run_id 로 처음부터.
-- 기록: 승인자·ISO 시각·코멘트·flags_seen·acknowledged_codes·snapshot_sha256·history → state, 12_approvals.json, APPROVALS 시트, approved_state.json. 스냅샷·승인 state 는 커밋 제외(.gitignore)이되 삭제 금지. 승인은 CLI `resume` 로만 이루어진다(viewer.html 은 명령 문자열 생성만). AI 는 approval_* 접근이 없다.
+- 기록: 승인자·ISO 시각·코멘트·flags_seen·acknowledged_codes·snapshot_sha256·history → state, 12_approvals.json, APPROVALS 시트, approved_state.json. 스냅샷·승인 state 는 커밋 제외(.gitignore)이되 삭제 금지. 승인의 진입점은 두 곳뿐이며 둘 다 `set_decision()` 을 호출한다: CLI `resume`, 로컬 앱(`app/server.py` `/api/decision` — viewer.html 의 승인 버튼은 승인자·코멘트·ack 를 그대로 보낼 뿐 판단하지 않는다). AI 는 approval_* 접근이 없다.
 - 드라이런(`/curve-validate`): 하네스가 approver='dry-run' 으로 입력 승인만 자동 기록하고 approve_exception/approve_curve 정지에서 보고 후 종료한다. approved_state.json 을 쓰지 않는다.
 
 ## 7. AI 의 역할 (해석까지)
 
 허용: (a) `interpret_labels` 노드에서 LABEL_GRAMMAR 정규식 미매칭 행의 **라벨 문자열만** LLM 에 정규화 제안 요청(AI_ENABLED=True + API 키가 있을 때만; 페이로드에 숫자가 있으면 assert). 제안은 정규식 재검증을 통과해야 parser='llm' 으로 채택되고 LLM_PARSER_USED WARN 이 남는다. (b) 증빙·화면의 한국어 설명문(state 값을 문자열로 삽입, 숫자 생성 금지).
-금지: YTM 값 읽기·요약, spot/DF/forward 계산, par 통과·심각도·헤드라인 판정, 커브 채택, 승인 필드 쓰기. 기본 경로는 정규식이며 API 키 없이 fixture A~E 전부 완주해야 한다. 고객 금리표·식별정보는 외부 LLM 으로 보내지 않는다.
+금지: YTM 값 읽기·요약, spot/DF/forward 계산, par 통과·심각도·헤드라인 판정, 커브 채택, 승인 필드 쓰기. **앱 초안: `io/label_ai.py` 미구현 — `AI_ENABLED=True` 는 러너 사전 게이트와 `interpret_labels` 가 거부한다(정규식 경로만).** 기본 경로는 정규식이며 API 키 없이 fixture A~E 전부 완주해야 한다. 고객 금리표·식별정보는 외부 LLM 으로 보내지 않는다.
 
 ## 8. 화면 (그래프·state 다음에 붙인다)
 
-`app/viewer.html`(외부 라이브러리 없음)은 state JSON 과 `graph/edges_export.json` 만 읽는다. 왼쪽: 매트릭스·선택 행·BOOT/BM 열 순서의 결과표(basis 헤더)·par 잔차·Q11 예시·flag. 오른쪽: EDGES 그래프에서 현재 노드·지나온 엣지(run.path) 강조 + state JSON. 화면에 흐름 로직 없음(승인 버튼은 resume 명령 문자열 생성만). 지나온 경로(run.path: from, 조건, to, 시각, 재개 회차)가 그대로 감사조서다.
+`app/server.py`(표준 라이브러리 HTTP, 127.0.0.1 전용; `start_app.bat` 또는 `python -m cb_valuation.step1_curve.app.server --open`)가 `app/viewer.html`(외부 라이브러리 없음)을 띄운다. 화면은 `/api/graph`(= `export_edges_json()` + 노드 docstring + PROFILE_DESCRIPTIONS)와 `/api/state`(state JSON)만 읽는다. 왼쪽: 입력(프로필 선택 필수·매트릭스·출처·상품) → 결과(선택 행·마디·부트스트랩 표(basis 헤더)·트리 격자·Q11 예시·헤드라인·flag·민감도) → 승인(flags_seen·코드별 ack·승인자·코멘트) → 증빙(파일·체크리스트) → state JSON. 오른쪽: EDGES 그래프(주 사슬 세로, fail 왼쪽, wait_for_human 오른쪽, done 아래)에 현재 노드·정지 노드·지나온 엣지(run.path)를 색으로 강조하고 조건 이름을 라벨로 붙인다. 화면에 흐름 로직 없음 — 버튼은 `/api/run`(입력 → `run()`)과 `/api/decision`(`set_decision()` → `run(start=paused_at_node)`)을 호출만 한다. 지나온 경로(run.path: from, 조건, to, 시각, 재개 회차)가 그대로 감사조서다.
 
 ## 9. 2단계 인터페이스
 
@@ -398,6 +401,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `PRICE_MODE` | `"par"` | BOOT/검토자 PV OF BOND 10000 \| "kicpa_conventional"(한공회 §3.7.2, 3M 국채 10,080.6) |
 | `INTERP_METHOD` | `"linear"` | 검토자 C37 직선보간 ; "pchip" 필수 옵션 ; 비교 전용 natural_cubic/bessel/kruger/smith_wilson |
 | `INTERP_SPACE_PRE` | `"ytm"` | 모드 A: knot→이표격자 per-period 선형 (BOOT!G/V 재현 오차 0) |
+| `INTERP_METHOD_PRE` | `"linear"` | 모드 A 이표격자 보간법 — XL BOOT!G/V 선형; PCHIP_TREE 도 이표격자는 선형(PROFILE_DESCRIPTIONS "트리 격자 보간만 PCHIP") |
 | `INTERP_SPACE_GRID` | `"spot_annual"` | BM MF_INTERPOL 이 BOOT!M(연복리 spot) 선형보간 = 한공회 변형① ; 대안 spot_continuous(②), log_df(④), ytm(③ 재현) |
 | `PCHIP_RECOMMENDED_SPACE` | `"log_df"` | 카탈로그 §3: PCHIP 은 g=r_c·t 대상일 때 선도 양수·연속 보장 (PCHIP_TREE 프로필이 명시 지정) |
 | `INTERP_TABLE` | `{` | method_id: (is_local, include) — INTERPOLATION_METHODS §1 (include: must\|recommended\|compare_only\|deferred_step2) |
@@ -408,7 +412,15 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `RF_SEED_3M` | `"none"` | \| "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_KBI 전용) |
 | `RF_REGRID_RULE` | `"interp"` | \| "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_KBI 전용) |
 | `MIN_KNOTS` | `4` | PCHIP 끝점 3점식 요건 + 여유 (열린 결정) |
+| `SENSITIVITY_COMBOS` | `[("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_ann` | 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단 |
+| `PROFILES_IMPLEMENTED` | `("DEFAULT", "PCHIP_TREE")` | 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화 |
+| `BLOCK_OF_ISSUANCE` | `{"사모": "사모무보증", "공모": "공모무보증"}` | 발행형태 → KIS-NET 고시 블록(B39 공모무보증 / B54 사모무보증), 감사인 Q13 |
+| `RATING_ORDER` | `["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-", "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-"` | KIS-NET 회사채 등급 서열(블록 분할 기준: 서열이 되돌아가면 새 블록); 부호 없는 등급은 "0" 으로 정규화 |
 | `NOTCH_DEFAULT` | `0` | 한공회 §3.9.1 노칭 (≠0 → NOTCH_APPLIED 승인) |
+| `DF_RANGE` | `(0.0, 1.0)` | DF 유효 범위(상한 1 = 명목금리 음수 불허 — 열린 결정) ; 부트스트랩 df_valid·트리 df_range_ok |
+| `TOL_DF_MONOTONE` | `1e-15` | 트리 DF 비증가 판정 여유(부동소수 반올림) |
+| `WEEKS_PER_YEAR` | `52` | 단위 환산(bp, 증빙 WEEKS 행) |
+| `BP_PER_UNIT` | `1e4` | 단위 환산(bp, 증빙 WEEKS 행) |
 | `BLOCK_FALLBACK` | `{"사모무보증": "공모무보증", "공모무보증": "사모무보증"}` | 요청 블록 결측 시 대체 (감사인 Q13 회신 2025-02-04: 사모 미고시 → 공모 사용) ; 대체 사용 → ROW_FALLBACK 승인 |
 | `DAYCOUNT` | `"ACT/365"` | 보고서 T=1633/365 ; "30/360" = 워크시트 함수 YEARFRAC(MAIN_주가!B7,MAIN_주가!B6,0) (XL DATA!A4=3.475, dT=DATA!C4=A4/B4, BM!C3=DATA!$C$4) |
 | `TREE_GRID` | `{"mode": "report", "N": 234, "dt_weekly": 1.0 / 52.0}` | report: N 고정(보고서 234) \| weekly: dt=1/52(검토자) \| excel: N 고정 (XL DATA!B4=181) |
@@ -460,3 +472,4 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `XLSX_DC_BLOCKS` | `[` | (블록 제목, [(행 라벨, 원천 state 접두사, 숫자 서식)]) — 열 = 마디(블록 1·3) 또는 격자 스텝(블록 2·4) ; 라벨·서식은 REV Rf_dc r3~r38 원문({…} 커브별 치환: rate=RISK FREE RATE\|RISKY RATE, period=HALF-YEAR\|QUARTER) |
 | `XLSX_COLUMNS` | `{"PAR_CHECK": ["curve", "t", "n", "price", "target", "residual", "residual_x_face"],` | 검토자 MODEL CHECK |
 | `PROFILES` | `{` | 상수 오버라이드 dict 일 뿐 판단 로직 없음. fixture 매핑: A=DEFAULT, B=EXCEL_KBI, C=REVIEWER_2024, D=KICPA_1130, PCHIP_TREE=A 입력 재사용 |
+| `NODES_` | `nodes or NODES` |  |

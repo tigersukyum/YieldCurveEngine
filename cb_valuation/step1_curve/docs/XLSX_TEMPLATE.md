@@ -31,11 +31,11 @@ INPUT_RAW · ROWS_USED · PROVENANCE · CONVENTIONS · **Rf_dc** · **Rd_dc** ·
 | 1 `{rate} - YTM` | 공시 마디(TENOR_LABELS) | WEEKS(테너 주수), TENOR, `{rate} - YTM`(rows), SPOT RATE(bootstrap, 연복리) | r4~r7 |
 | 2 `Grid Forward {rate}(INTERPOLATED YTM AND SPOT RATE)` | 트리 격자 스텝(TREE_GRID) | STEP, t (years), `{rate} - YTM`(tree), SPOT RATE(tree), FORWARD RATE(fwd, per_step) | r10~r13 |
 | 3 `BOOTSTRAPPING({period})` | 부트스트랩 격자(1/m 년) | `{period}`, WEEKS, YTM - YEARLY, `{period}` PAYMENT RATE(=c), PV OF PRINCIPAL, PV OF BOND(PAR_FACE 또는 관행적 가격), PVF OF SPOT Rate(DF), SUM OF PVF SPOT JUST PRIOR TO(ΣDF), `{period}` SPOT Rate(per_period), SPOT Rate -Yearly(annual_eff), **SPOT Rate -Continuous(conv, 추가)**, FORWARD Rate - `{period}`, FORWARD Rate - Yearly, **MODEL CHECK (PAR REPRICE)**(par_check: Σc·DF+DF_n 을 PAR_FACE 로 환산), **PAR RESIDUAL**(par_check: 잔차, 지수 서식) | r16~r28 (+par 행 2개 추가) |
-| 4 `Grid Forward {rate}` | 트리 격자 스텝 | STEP, STEP SPOT RATE, FORMULA I(1+step spot), FORMULA II -CUMM(누적곱), STEP FORWARD RATE, PVF OF FORWARD RATE(DF_step), **MODEL CHECK (PROD DF_FWD - DF_SPOT)**(fwd_spot_check, Q11), MODEL CHECK (PV) | r31~r38 (원본 철자 'FOMULA' → FORMULA) |
+| 4 `Grid Forward {rate}` | 트리 격자 스텝 | STEP, STEP SPOT RATE(`fwd.spot_per_step` = (1+z_k)^dt−1), FORMULA I(`fwd.growth_step` = 1+F_k — 검토자 r33 = 1+weekly forward), FORMULA II -CUMM(`fwd.growth_cum_prev` = Π_{j<k}(1+F_j), 첫 열 1 — r34), STEP FORWARD RATE(F_k), PVF OF FORWARD RATE(df_step), **MODEL CHECK (PROD DF_FWD - DF_SPOT)**(fwd_spot_check diff_prod, Q11), MODEL CHECK (PV)(`fwd.df_backward` = Π_{j≥k} df_step_j × PAR_FACE — r38 역방향 PV) | r31~r38 (원본 철자 'FOMULA' → FORMULA) |
 
 주의
 - 검토자 원본은 RF 도 분기(QUARTER)였다(REVIEWER_2024 프로필). DEFAULT 는 RF 반기이므로 `{period}`=HALF-YEAR 로 치환되고 열 수가 달라진다 — 라벨은 프로필의 RF_FREQ/RD_FREQ 에서 결정하며 하드코딩하지 않는다.
 - 블록 2·4 의 열 수 = 트리 격자 스텝 수(보고서 N=234 / 주간 / 엑셀 N=181). 검토자 원본은 520 주(TC 열).
 - `Rd_dc` 원본의 "BOOTSTRAPPING(Weekly)" 블록(r39~r45, 주간 부트스트랩)은 REVIEWER_2024 전용 대조 항목이며 기본 템플릿에는 넣지 않는다(SENSITIVITY 시트의 FREQ_SENSITIVITY 로 대체).
 - 각 행의 정확한 state 경로는 빌드 9단계(`io/evidence_writer.py`)에서 STATE_SCHEMA 와 함께 확정한다 — 여기서는 접두사까지만 규정.
-- 값은 state 의 double 그대로 쓰고 서식만 입힌다(반올림한 값을 쓰지 않는다). 셀 주소는 `checklist_map.json` 이 참조하므로 행 순서를 바꾸면 `Constants.XLSX_DC_BLOCKS` 와 이 문서를 함께 바꾼다.
+- 값은 state 의 double 그대로 쓰고 서식만 입힌다(반올림한 값을 쓰지 않는다). 작성기는 **계산하지 않는다** — 파생값(부트스트랩 격자 선도·성장계수·역방향 PV·격자 YTM)은 `compute_forward`/`map_tree_grid`/`interpolate` 노드가 state 에 기록하고, 작성기가 하는 산술은 PAR_FACE 배율과 WEEKS(=t×WEEKS_PER_YEAR) 환산뿐이다. PV OF BOND = PAR_FACE×목표가격, MODEL CHECK (PAR REPRICE) = PAR_FACE×재가격(둘을 구분). 셀 주소는 `checklist_map.json` 이 참조하므로 행 순서를 바꾸면 `Constants.XLSX_DC_BLOCKS` 와 이 문서를 함께 바꾼다.
