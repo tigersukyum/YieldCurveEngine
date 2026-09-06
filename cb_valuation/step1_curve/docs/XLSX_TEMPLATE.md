@@ -1,0 +1,41 @@
+# XLSX_TEMPLATE — 증빙 통합문서 규격 (사용자 결정 2026-09-07: xlsx 필수, 검토자 `Rf_dc`/`Rd_dc` 서식 재현 + par 검증 행)
+
+원천: `Constants.XLSX_REQUIRED / XLSX_TEMPLATE / XLSX_SHEETS / XLSX_DC_STYLE / XLSX_DC_BLOCKS / XLSX_COLUMNS`(`graph/step1_graph.py`; 표는 GRAPH_SPEC §10 에 자동 생성). 서식의 출처는 내부 검토자 패키지 `8521_평가보고서 검토자의 검토요구사항_Call Option Valuation_KBI metal_2024.xlsx` 의 `Rf_dc`(B1:TC38)·`Rd_dc`(A1:TD53) 시트를 openpyxl 로 읽어 확인한 값이다(2026-09-07; 원본은 `ref/` 커밋 제외, 셀 값은 fixture C `tests/fixtures/reviewer_curves_20241231.json`).
+
+## 1. 왜 xlsx 가 필수인가
+- 감사인 Q1 "파일/탭/셀 위치와 함께 제출" — `checklist_map.json` 의 위치 문자열 `<file>!<sheet>!<range>` 가 xlsx 시트·셀을 가리킨다.
+- 검토자는 2024년에 `Rf_dc`/`Rd_dc` 형식으로 독립 재계산을 했으므로 같은 배치로 내보내면 대조가 셀 단위로 가능하다(C36 독립 재계산 일치).
+- 따라서 `XLSX_REQUIRED=True`: openpyxl 이 없어 xlsx 를 못 쓰면 `export_evidence` 엣지 `xlsx누락`(XLSX_MISSING) → fail. CSV/JSON/MD(01~12)는 계속 함께 생성되며 해시 비교(바이트 재현)의 원천이다(xlsx 는 저장 시각 때문에 바이트 결정성이 없음).
+- 배포: openpyxl 은 `pyproject.toml` 의 선언 의존성이다. 다른 PC 에서는 `pip install .`(또는 `pip install -r requirements.txt`) 후 실행한다. 표준 라이브러리 원칙의 유일한 예외.
+
+## 2. 통합문서 구조 (`XLSX_SHEETS` 순서 고정)
+INPUT_RAW · ROWS_USED · PROVENANCE · CONVENTIONS · **Rf_dc** · **Rd_dc** · PAR_CHECK · FWD_SPOT_CHECK · SENSITIVITY · HEADLINE · FLAGS · APPROVALS · RUN_PATH
+- 열 지향 시트(PAR_CHECK, FWD_SPOT_CHECK, RUN_PATH, APPROVALS …)는 `XLSX_COLUMNS` 의 헤더를 1행에 쓴다(basis 라벨 포함).
+- `Rf_dc`/`Rd_dc` 는 **행 지향**(검토자 배치): 라벨은 B열, 데이터는 C열부터 오른쪽으로, 블록 사이 빈 행 1개.
+
+## 3. Rf_dc / Rd_dc 서식 (`XLSX_DC_STYLE`)
+| 항목 | 값 | 검토자 원본 |
+|---|---|---|
+| 제목 셀 | B1 = "무위험이자율" / "위험이자율" (굵게) | Rf_dc!B1, Rd_dc!B1 |
+| 기준일 셀 | D1 = valuation_date | `=Summary!D1` |
+| 고시일 셀 | 블록 1 의 라벨 열(B5) = curve_date (mm-dd-yy) | `=Summary!C19` |
+| 라벨 열 / 데이터 시작 열 | B / C | 동일 |
+| 열 폭 | B 18.7, 데이터 12.7 | 동일 |
+| 틀 고정 | E1 | 동일 |
+| 블록 제목 | 굵게, 데이터 없음 | r3, r9, r15, r30 |
+| 숫자 서식 | 블록 표의 서식 열 그대로(`0.000%`, `0.00000%`, `#,##0.00_ `, `0.00000_ ` 등) | 동일 |
+
+## 4. 블록과 행 (`XLSX_DC_BLOCKS`; `{rate}` = RISK FREE RATE / RISKY RATE, `{period}` = HALF-YEAR(RF_FREQ=2) / QUARTER(RD_FREQ=4 또는 REVIEWER_2024 의 RF))
+| 블록 | 열 = | 행(라벨 → 원천 접두사) | 검토자 원본 행 |
+|---|---|---|---|
+| 1 `{rate} - YTM` | 공시 마디(TENOR_LABELS) | WEEKS(테너 주수), TENOR, `{rate} - YTM`(rows), SPOT RATE(bootstrap, 연복리) | r4~r7 |
+| 2 `Grid Forward {rate}(INTERPOLATED YTM AND SPOT RATE)` | 트리 격자 스텝(TREE_GRID) | STEP, t (years), `{rate} - YTM`(tree), SPOT RATE(tree), FORWARD RATE(fwd, per_step) | r10~r13 |
+| 3 `BOOTSTRAPPING({period})` | 부트스트랩 격자(1/m 년) | `{period}`, WEEKS, YTM - YEARLY, `{period}` PAYMENT RATE(=c), PV OF PRINCIPAL, PV OF BOND(PAR_FACE 또는 관행적 가격), PVF OF SPOT Rate(DF), SUM OF PVF SPOT JUST PRIOR TO(ΣDF), `{period}` SPOT Rate(per_period), SPOT Rate -Yearly(annual_eff), **SPOT Rate -Continuous(conv, 추가)**, FORWARD Rate - `{period}`, FORWARD Rate - Yearly, **MODEL CHECK (PAR REPRICE)**(par_check: Σc·DF+DF_n 을 PAR_FACE 로 환산), **PAR RESIDUAL**(par_check: 잔차, 지수 서식) | r16~r28 (+par 행 2개 추가) |
+| 4 `Grid Forward {rate}` | 트리 격자 스텝 | STEP, STEP SPOT RATE, FORMULA I(1+step spot), FORMULA II -CUMM(누적곱), STEP FORWARD RATE, PVF OF FORWARD RATE(DF_step), **MODEL CHECK (PROD DF_FWD - DF_SPOT)**(fwd_spot_check, Q11), MODEL CHECK (PV) | r31~r38 (원본 철자 'FOMULA' → FORMULA) |
+
+주의
+- 검토자 원본은 RF 도 분기(QUARTER)였다(REVIEWER_2024 프로필). DEFAULT 는 RF 반기이므로 `{period}`=HALF-YEAR 로 치환되고 열 수가 달라진다 — 라벨은 프로필의 RF_FREQ/RD_FREQ 에서 결정하며 하드코딩하지 않는다.
+- 블록 2·4 의 열 수 = 트리 격자 스텝 수(보고서 N=234 / 주간 / 엑셀 N=181). 검토자 원본은 520 주(TC 열).
+- `Rd_dc` 원본의 "BOOTSTRAPPING(Weekly)" 블록(r39~r45, 주간 부트스트랩)은 REVIEWER_2024 전용 대조 항목이며 기본 템플릿에는 넣지 않는다(SENSITIVITY 시트의 FREQ_SENSITIVITY 로 대체).
+- 각 행의 정확한 state 경로는 빌드 9단계(`io/evidence_writer.py`)에서 STATE_SCHEMA 와 함께 확정한다 — 여기서는 접두사까지만 규정.
+- 값은 state 의 double 그대로 쓰고 서식만 입힌다(반올림한 값을 쓰지 않는다). 셀 주소는 `checklist_map.json` 이 참조하므로 행 순서를 바꾸면 `Constants.XLSX_DC_BLOCKS` 와 이 문서를 함께 바꾼다.

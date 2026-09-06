@@ -1,0 +1,33 @@
+# step1_curve — 1단계 이자율 커브 엔진 세부 규칙 (루트 CLAUDE.md의 공통 규칙에 추가)
+
+## 입력 레이아웃
+- 채권평가사 시가평가 기준수익률 매트릭스: 열 `종류|구분|적용대상채권|3M,6M,9M,1Y,1.5Y,2Y,2.5Y,3Y,4Y,5Y,7Y,10Y,15Y,20Y,30Y,50Y`(%, `Constants.TENOR_LABELS`), 행 = 채권 종류/등급, 블록 헤더 행(공모무보증/사모무보증) 상속. 결측 `'-'`(`MISSING_TOKENS`) → None(절대 0 아님).
+- RF = 국고채 행(KIS-NET row2). RD = 회사채 + 등급 + 블록(참조 모형: 사모무보증 BB+ row58; 공모 BB+ row42). 대체(BLOCK_FALLBACK)·노칭·전기 등급/블록 불일치는 승인 코드(ROW_FALLBACK·NOTCH_APPLIED·RATING_CHANGED·BLOCK_CHANGED).
+
+## 관례 색인 (값은 `graph/step1_graph.py` Constants; 문서에는 상수명만 — 값 표는 GRAPH_SPEC §11)
+RF_FREQ/RD_FREQ, COUPON_CONV, BOOTSTRAP_MODE(A 기본/B 한공회), PRICE_MODE, INTERP_METHOD(linear 기본/pchip 필수), INTERP_SPACE_PRE/GRID, PCHIP_RECOMMENDED_SPACE, EXTRAP_LEFT/RIGHT, EXTRAP_LEFT_FLAT_SEVERITY(열린 결정), CURVE_HORIZON_Y, `Constants.knot_tenors(curve)`(모드별 사용 마디), DAYCOUNT, TREE_GRID, TREE_FWD_RULE, NODE_DISCOUNT_CONV, HEADLINE_RULE, PROFILES 5종 {DEFAULT, EXCEL_KBI, REVIEWER_2024, KICPA_1130, PCHIP_TREE} ↔ fixture A/B/C/D(PCHIP_TREE 는 A 입력 재사용).
+- **프로필은 실행 시 사용자가 선택한다**(PROFILE_SELECTION=required; CLI `--profile` 필수, 화면 목록 = PROFILES 키 + PROFILE_DESCRIPTIONS). 선택은 `provenance.method_choice` 에 기록되어 PROVENANCE_REQUIRED_FIELDS 로 강제(미선택 → 출처불완전, 실행 상수와 다르면 프로필불일치). 조용한 기본값 없음. 프로필 전환은 `Constants.with_profile(name)` 만 쓴다(PROFILE_NAME 이 지문에 포함). 임시 상수 변경이 필요하면 graph_check 의 `CAP` 처럼 `items()` 전체 복사로 만든다 — 상속만 하는 서브클래스는 금지. 재개 시 `Constants.with_profile(state.run.profile)` 로 복원.
+
+## 노드 22 · 엣지 68 · 게이트 8 · 승인 3 · 종단 3 (전체 표: `docs/GRAPH_SPEC.md` §1~§3, 코드: `graph/step1_graph.py`)
+load_matrix → record_provenance → interpret_labels → **approve_input** → select_rows → build_grid → interpolate → bootstrap → verify_par → convert_compounding → map_tree_grid → compute_forward → verify_fwd_spot → run_sensitivity → compute_headline → sanity_check → (**approve_exception**) → **approve_curve** → export_evidence → done | fail | wait_for_human. 게이트(`GATE_NODES`)는 첫 엣지가 반드시 '비유한'.
+
+## 공식 색인 (출처: `docs/FORMULA_REFERENCE.md`)
+모드 A: spot_1=c_1, spot_n=((1+c_n)/(1−c_nΣDF))^(1/n)−1 ≡ DF_n=(1−c_nΣDF)/(1+c_n) (BOOT!H/I). 모드 B: 공시 마디 미지수 + 중간 이표일 보간 + brent(+Gauss-Seidel) (한공회 1130). 복리: annual=(1+s)^m−1, cont=m·ln(1+s)=ln(1+annual) (BOOT!M/N). 선도: f_i=(r_i t_i−r_{i−1}t_{i−1})/Δt, DF=exp(−f Δt), F_i=DF_{i−1}/DF_i−1 (BM). 검증: Σc·DF+DF_n=1, Π DF_fwd=DF_spot, knot 왕복, 복리 왕복. PCHIP: `docs/INTERPOLATION_METHODS.md §3`(scipy/SLATEC/MATLAB 동일).
+
+## 심각도 (담당: 전용 엣지 vs sanity_check) — GRAPH_SPEC §5
+FAIL → fail(`result.fail_code` = EDGE_CODES; 다중 노드 교차 규칙 INTERP_MISMATCH 만 sanity 소속). APPROVAL_REQUIRED → approve_exception(코드별 `--ack`). WARN → 기록(XLSX_SKIPPED 는 export.warnings). 역전 커브는 정상(NONMONO는 WARN).
+
+## 승인·스냅샷 — GRAPH_SPEC §6
+정지: `state/<valuation_date>__<curve_set_id>/snapshot__<node>__<n>.json`, exit 3. 결정은 `set_decision()` 만(요청 이후·정지 중·같은 노드·승인자 필수·ack ⊆ flags_seen). 재개 `cli resume --snapshot --decision --approver --comment [--ack]` → `load_state()` → `with_profile(run.profile)` → `run(start=paused_at_node)`; 승인 노드 엣지 순서는 `HUMAN_EDGE_ORDER`(거절·결정선행·상수변경·변조·[미확인코드]·승인·대기). 재개 후 CALC_PREFIXES 바이트 동일.
+
+## fixture · 골든 · 테스트
+`tests/fixtures/README.md`. 골든값 원천은 `tests/fixtures/golden/<fixture_id>.json`(FORMULA_REFERENCE §9 는 표시용 인용). 두 갈래 시나리오 id 는 `graph_check.SCENARIOS`(= GRAPH_SPEC §4, A01~A04·E01~E50)만 인용. 러너 `python -m unittest discover -s cb_valuation/step1_curve/tests -v`(stdlib). 그래프 검사 `python cb_valuation/step1_curve/graph/graph_check.py`(exit 0 = 정적 불변식·전 엣지 커버·노드 쓰기 추적·지문 결정성). 참조 구현 `reference/`(interp_ref.py는 scipy 대조 검증됨 — 이식하되 공식은 바꾸지 말 것; recompute_boot.py 는 `reference/xl_BOOT.txt`·`xl_KIS-NET.txt` 사용).
+
+## 증빙 번들 — GRAPH_SPEC §10, FORMULA_REFERENCE §8, `docs/AUDITOR_QA.md`(질의 원문)
+`evidence/<key>/` EVIDENCE_FILES(01~12) + README_conventions.md + **xlsx(필수, XLSX_REQUIRED; 템플릿 `docs/XLSX_TEMPLATE.md` = 검토자 Rf_dc/Rd_dc 서식(XLSX_DC_BLOCKS/XLSX_DC_STYLE) + par 검증 행, 열 지향 시트는 XLSX_COLUMNS; 미생성 → 엣지 xlsx누락 FAIL)** + checklist_map.json(EVIDENCE_REQUIRED_ITEMS 전항목, 위치 문자열 `<file>!<sheet|->!<range|json_path>`) + 12_approvals.json. Q9·C42·C45~C47 은 STEP2_EVIDENCE_ITEMS(2단계). openpyxl 은 pyproject 선언 의존성(표준 라이브러리 원칙의 유일한 예외).
+
+## 참조 엑셀 결함 (수치·셀은 FORMULA_REFERENCE §3.1·§5.1·§9; 재현은 EXCEL_KBI 프로필에서만, 정상 모드에서는 수정)
+BOOT!G/V stale 하드코딩, L10 live + L11 stale 점프, MF_INTERPOL 좌측 원점 앵커·우측 Empty(0), R24:R25 '-'→0, 9M 미사용·3M 시드(RF_SEED_3M), 헤드라인 ceil_tenor(stale 5Y knot).
+
+## 금지 목록
+노드 내 라우팅, 타 노드 필드 쓰기, per_period→exp(), 결측 0 대입, 상수 하드코딩, 테스트 안 숫자 리터럴(상수 참조), constants 안 테스트 훅, Constants 상속 서브클래스(with_profile/items() 복사만), EXCEL_KBI 밖 엑셀 결함 재현, 출처 없는 공식, 완료 메시지만 있는 보고.

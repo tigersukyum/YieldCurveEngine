@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cb-valuation"
+version = "0.1.0"
+description = "전환사채(CB) 평가 프로그램 — 1단계 이자율 커브 엔진(YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙), 그래프 엔지니어링"
+readme = "README.md"
+requires-python = ">=3.12"
+# 표준 라이브러리 원칙의 유일한 예외: xlsx 증빙은 필수(Constants.XLSX_REQUIRED, 사용자 결정 2026-09-07)
+dependencies = ["openpyxl>=3.1"]
+
+[project.optional-dependencies]
+dev = []
+
+[tool.setuptools.packages.find]
+include = ["cb_valuation*"]
+
+[tool.setuptools.package-data]
+"cb_valuation.step1_curve" = ["docs/*.md", "tests/fixtures/*", "reference/*.txt"]
