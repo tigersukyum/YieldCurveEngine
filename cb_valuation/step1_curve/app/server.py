@@ -8,7 +8,7 @@ API: GET /api/graph(EDGES·노드·프로필·노드 간격·평가사·담당�
 python -m cb_valuation.step1_curve.app.server [--port 8765] [--open]
 """
 from __future__ import annotations
-import argparse, base64, getpass, json, os, re, sys, threading, webbrowser
+import argparse, base64, getpass, json, os, re, socket, sys, threading, urllib.request, webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ..graph import step1_graph as G
@@ -22,6 +22,7 @@ PKG = os.path.dirname(HERE)
 SESSION = {"state": None, "C": None, "base_dir": os.getcwd(), "last_path": None, "error": None}
 LOCK = threading.Lock()
 C0 = G.Constants
+APP_VERSION = "2026-09-07d"  # 화면(viewer.html 의 VIEWER_VERSION)과 같아야 한다 — 옛 서버/옛 화면 조합을 화면이 감지한다
 
 
 def _state_json(s):
@@ -49,6 +50,8 @@ def graph_payload():
     j["operators"] = _operators(SESSION["base_dir"])
     j["horizon_default"] = C0.CURVE_HORIZON_Y
     j["tenor_labels"] = list(C0.TENOR_LABELS)
+    j["app_version"] = APP_VERSION
+    j["pid"] = os.getpid()
     return j
 
 
@@ -92,6 +95,8 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, fh.read(), "text/html")
             if self.path == "/api/graph":
                 return self._send(200, graph_payload())
+            if self.path == "/api/version":
+                return self._send(200, {"app_version": APP_VERSION, "pid": os.getpid(), "base_dir": SESSION["base_dir"]})
             if self.path == "/api/state":
                 with LOCK:
                     s = SESSION["state"]
@@ -120,6 +125,9 @@ class H(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(n).decode("utf-8") or "{}")
         try:
+            if self.path == "/api/shutdown":  # 새 인스턴스가 옛 인스턴스를 교체할 때 사용(127.0.0.1 전용)
+                threading.Thread(target=self.server.shutdown, daemon=True).start()
+                return self._send(200, {"ok": True, "pid": os.getpid()})
             if self.path == "/api/parse":
                 text = body.get("matrix_text") or ""
                 return self._send(200, {"matrix_text": text, "preview": preview(text, C0)})
@@ -151,25 +159,61 @@ class H(BaseHTTPRequestHandler):
             return self._send(400, {"summary": R.summary(s) if s else None, "state": _state_json(s), "saved": SESSION["last_path"], "error": SESSION["error"]})
 
 
+class _Server(ThreadingHTTPServer):
+    allow_reuse_address = False  # Windows 에서 같은 포트에 두 서버가 동시에 붙는 사고(옛 서버 + 새 서버 → 화면이 옛 API 를 받음)를 막는다
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1) if hasattr(socket, "SO_EXCLUSIVEADDRUSE") else None
+        try:
+            s.bind(("127.0.0.1", port)); return True
+        except OSError:
+            return False
+
+
+def _try_shutdown_existing(port: int) -> bool:
+    """포트를 쥔 것이 이 앱(옛 인스턴스)이면 /api/shutdown 으로 내린다."""
+    try:
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/api/shutdown", data=b"{}", headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(req, timeout=3) as r:
+            return r.status == 200
+    except Exception:  # noqa: BLE001 — 옛 버전(엔드포인트 없음)이거나 다른 프로그램
+        return False
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(); ap.add_argument("--port", type=int, default=8765); ap.add_argument("--open", action="store_true"); ap.add_argument("--base-dir", default=os.getcwd())
     a = ap.parse_args(argv)
-    SESSION["base_dir"] = os.path.abspath(a.base_dir)
-    srv = ThreadingHTTPServer(("127.0.0.1", a.port), H)
-    url = f"http://127.0.0.1:{a.port}/"
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
-    print(f"이자율 커브 엔진 앱: {url}   (작업 폴더 {SESSION['base_dir']}; 화면 {os.path.join(HERE, 'viewer.html')}; 종료 Ctrl+C)")
-    print("브라우저에서 위 주소를 여세요. viewer.html 파일을 직접 열면 동작하지 않습니다.")
+    SESSION["base_dir"] = os.path.abspath(a.base_dir)
+    port = a.port
+    if not _port_free(port):
+        print(f"포트 {port} 를 다른 프로세스가 쓰고 있습니다 — 이 앱의 옛 인스턴스면 종료를 시도합니다.")
+        if _try_shutdown_existing(port):
+            import time; time.sleep(1.0)
+        if not _port_free(port):
+            for cand in range(port + 1, port + 20):
+                if _port_free(cand):
+                    print(f"포트 {port} 를 비울 수 없어 {cand} 로 엽니다(옛 서버 창은 직접 닫아 주세요).")
+                    port = cand; break
+            else:
+                print("빈 포트를 찾지 못했습니다."); return 1
+    srv = _Server(("127.0.0.1", port), H)
+    url = f"http://127.0.0.1:{port}/"
+    print(f"이자율 커브 엔진 앱 v{APP_VERSION}: {url}   (작업 폴더 {SESSION['base_dir']}; PID {os.getpid()}; 종료 Ctrl+C)")
+    print("브라우저에서 위 주소를 여세요. viewer.html 파일을 직접 열면 동작하지 않습니다. 화면이 옛 버전이면 Ctrl+F5.")
     if a.open:
         webbrowser.open(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
