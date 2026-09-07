@@ -19,10 +19,23 @@ def _now():
     return datetime.now(timezone.utc).isoformat()
 
 
+def _num(v):
+    if v in (None, ""):
+        return None
+    return float(v)
+
+
+def _int(v):
+    if v in (None, ""):
+        return None
+    return int(v)
+
+
 def prepare_state(form: dict, base_dir: str):
-    """form 키: profile(필수), matrix_text, valuation_date, curve_date, curve_set_id, operator, source_agency, downloaded_at, capture_path,
-    instrument{issuer, cb_name, maturity_date, issuance_type, rating, prior_rating_basis, prior_block_basis, event_dates, rating_capture_path,
-    reported_rf_pct, reported_rd_pct, reported_source_doc}"""
+    """form 키(커브 전용 모드 = 앱 기본): profile(필수), matrix_text, step(월간/주간/일간 ∈ STEP_MODES), horizon_years(산출 기간, 년), rf_row_index, rd_row_index,
+    valuation_date, curve_date, curve_set_id, operator, source_agency, downloaded_at, capture_path(행 캡처; 서버가 저장한 상대경로), chosen_at.
+    선택(상품 모드; 2단계용): instrument{issuer, cb_name, maturity_date, issuance_type, rating, prior_rating_basis, prior_block_basis, event_dates,
+    rating_capture_path, reported_rf_pct, reported_rd_pct, reported_source_doc}. 상품 정보가 없으면 헤드라인·등급 캡처는 요구되지 않는다."""
     profile = form.get("profile")
     if not profile:
         raise ValueError("프로필을 선택해야 합니다(PROFILE_SELECTION=required): " + ", ".join(G.Constants.PROFILES))
@@ -34,10 +47,13 @@ def prepare_state(form: dict, base_dir: str):
     bad = unsupported(C)  # 사전 게이트: 노드 안에서 NotImplementedError 가 나기 전에 상수 조합을 검사
     if bad:
         raise NotImplementedError("초안 미지원 상수 조합: " + "; ".join(bad))
+    step = form.get("step") or None
+    if step is not None and step not in C.STEP_MODES:
+        raise ValueError(f"노드 간격은 {list(C.STEP_MODES)} 중 하나여야 합니다: {step!r}")
     s = G.new_state(C)
     s.run.base_dir = os.path.abspath(base_dir)
     s.run.run_id = f"run_{_now().replace(':', '').replace('-', '')[:15]}"
-    s.run.curve_set_id = form.get("curve_set_id") or "CB1"
+    s.run.curve_set_id = form.get("curve_set_id") or "CURVE1"
     s.input.raw_text = form.get("matrix_text") or ""
     p = s.provenance
     p.source_agency = form.get("source_agency") or None
@@ -46,6 +62,8 @@ def prepare_state(form: dict, base_dir: str):
     p.downloaded_at = form.get("downloaded_at") or _now()
     p.operator = form.get("operator") or None
     p.capture_path = form.get("capture_path") or None
+    p.grid_settings.update(step=step, horizon_years=_num(form.get("horizon_years")) if step else None)
+    p.row_choice.update(rf_row_index=_int(form.get("rf_row_index")), rd_row_index=_int(form.get("rd_row_index")))
     # 원본 사본(Q12): data/raw/<curve_date>/matrix_<curve_set_id>.csv
     if s.input.raw_text and p.curve_date:
         rd = os.path.join(base_dir, "data", "raw", p.curve_date); os.makedirs(rd, exist_ok=True)
@@ -64,12 +82,6 @@ def prepare_state(form: dict, base_dir: str):
     # 결정성: 같은 입력 두 번 → 같은 CALC_PREFIXES 해시가 되도록 시각은 입력값(downloaded_at)을 따른다(테스트가 고정값을 넣는다)
     p.method_choice.update(profile=profile, chosen_by=p.operator, chosen_at=form.get("chosen_at") or p.downloaded_at)
     return s, C
-
-
-def _num(v):
-    if v in (None, ""):
-        return None
-    return float(v)
 
 
 def advance(s, C, base_dir: str, start=None):

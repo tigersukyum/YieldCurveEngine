@@ -5,7 +5,7 @@
 - RF = 국고채 행(KIS-NET row2). RD = 회사채 + 등급 + 블록(참조 모형: 사모무보증 BB+ row58; 공모 BB+ row42). 대체(BLOCK_FALLBACK)·노칭·전기 등급/블록 불일치는 승인 코드(ROW_FALLBACK·NOTCH_APPLIED·RATING_CHANGED·BLOCK_CHANGED).
 
 ## 관례 색인 (값은 `graph/step1_graph.py` Constants; 문서에는 상수명만 — 값 표는 GRAPH_SPEC §11)
-RF_FREQ/RD_FREQ, COUPON_CONV, BOOTSTRAP_MODE(A 기본/B 한공회), PRICE_MODE, INTERP_METHOD(linear 기본/pchip 필수), INTERP_SPACE_PRE/GRID, PCHIP_RECOMMENDED_SPACE, EXTRAP_LEFT/RIGHT, EXTRAP_LEFT_FLAT_SEVERITY(열린 결정), CURVE_HORIZON_Y, `Constants.knot_tenors(curve)`(모드별 사용 마디), DAYCOUNT, TREE_GRID, TREE_FWD_RULE, NODE_DISCOUNT_CONV, HEADLINE_RULE, PROFILES 5종 {DEFAULT, EXCEL_KBI, REVIEWER_2024, KICPA_1130, PCHIP_TREE} ↔ fixture A/B/C/D(PCHIP_TREE 는 A 입력 재사용).
+RF_FREQ/RD_FREQ, COUPON_CONV, BOOTSTRAP_MODE(A 기본/B 한공회), PRICE_MODE, INTERP_METHOD(linear 기본/pchip 필수), INTERP_SPACE_PRE/GRID, PCHIP_RECOMMENDED_SPACE, EXTRAP_LEFT/RIGHT, EXTRAP_LEFT_FLAT_SEVERITY(열린 결정), CURVE_HORIZON_Y, `Constants.knot_tenors(curve)`(모드별 사용 마디), DAYCOUNT, TREE_GRID, TREE_FWD_RULE, NODE_DISCOUNT_CONV, HEADLINE_RULE, PROFILES 5종 {DEFAULT, EXCEL_REF, REVIEWER_2024, KICPA_1130, PCHIP_TREE} ↔ fixture A/B/C/D(PCHIP_TREE 는 A 입력 재사용).
 - **프로필은 실행 시 사용자가 선택한다**(PROFILE_SELECTION=required; CLI `--profile` 필수, 화면 목록 = PROFILES 키 + PROFILE_DESCRIPTIONS). 선택은 `provenance.method_choice` 에 기록되어 PROVENANCE_REQUIRED_FIELDS 로 강제(미선택 → 출처불완전, 실행 상수와 다르면 프로필불일치). 조용한 기본값 없음. 프로필 전환은 `Constants.with_profile(name)` 만 쓴다(PROFILE_NAME 이 지문에 포함). 임시 상수 변경이 필요하면 graph_check 의 `CAP` 처럼 `items()` 전체 복사로 만든다 — 상속만 하는 서브클래스는 금지. 재개 시 `Constants.with_profile(state.run.profile)` 로 복원.
 
 ## 노드 22 · 엣지 68 · 게이트 8 · 승인 3 · 종단 3 (전체 표: `docs/GRAPH_SPEC.md` §1~§3, 코드: `graph/step1_graph.py`)
@@ -26,16 +26,17 @@ FAIL → fail(`result.fail_code` = EDGE_CODES; 다중 노드 교차 규칙 INTER
 ## 증빙 번들 — GRAPH_SPEC §10, FORMULA_REFERENCE §8, `docs/AUDITOR_QA.md`(질의 원문)
 `evidence/<key>/` EVIDENCE_FILES(01~12) + README_conventions.md + **xlsx(필수, XLSX_REQUIRED; 템플릿 `docs/XLSX_TEMPLATE.md` = 검토자 Rf_dc/Rd_dc 서식(XLSX_DC_BLOCKS/XLSX_DC_STYLE) + par 검증 행, 열 지향 시트는 XLSX_COLUMNS; 미생성 → 엣지 xlsx누락 FAIL)** + checklist_map.json(EVIDENCE_REQUIRED_ITEMS 전항목, 위치 문자열 `<file>!<sheet|->!<range|json_path>`) + 12_approvals.json. Q9·C42·C45~C47 은 STEP2_EVIDENCE_ITEMS(2단계). openpyxl 은 pyproject 선언 의존성(표준 라이브러리 원칙의 유일한 예외).
 
-## 참조 엑셀 결함 (수치·셀은 FORMULA_REFERENCE §3.1·§5.1·§9; 재현은 EXCEL_KBI 프로필에서만, 정상 모드에서는 수정)
+## 참조 엑셀 결함 (수치·셀은 FORMULA_REFERENCE §3.1·§5.1·§9; 재현은 EXCEL_REF 프로필에서만, 정상 모드에서는 수정)
 BOOT!G/V stale 하드코딩, L10 live + L11 stale 점프, MF_INTERPOL 좌측 원점 앵커·우측 Empty(0), R24:R25 '-'→0, 9M 미사용·3M 시드(RF_SEED_3M), 헤드라인 ceil_tenor(stale 5Y knot).
 
 ## 앱 초안 구조 (2026-09-07; 실행: `start_app.bat` 또는 `python -m cb_valuation.step1_curve.app.server --open`)
 - `nodes/` 노드 구현(자기 접두사만) → `nodes.NODES_IMPL` 을 `run(state, C, nodes=NODES_IMPL)` 에 넘긴다. `graph/step1_graph.NODES` 는 스텁(graph_check 전용)이며 EDGES 는 하나다. 승인·sanity_check·done·fail·wait_for_human 은 step1_graph 함수 그대로.
 - `curve/` 순수 함수(interp = reference/interp_ref 재사용, bootstrap 모드 A, compounding, gridmap.CurveOnGrid(공간·외삽), forward). `io/` 매트릭스 파서·정규식 라벨(블록은 등급 순서 재시작으로 분할)·증빙 작성기(xlsx 는 XLSX_DC_BLOCKS).
 - `app/runner.py` 가 CLI(`app/cli.py`)·서버(`app/server.py` + `viewer.html`) 공용: prepare_state(입력 접두사 채움; 프로필 필수) → advance(run + 스냅샷/최종 저장, `graph/snapshot.py`) → decide_and_resume(set_decision → run(start)). 번들 루트는 `run.base_dir`(러너가 기록; 노드는 환경변수를 읽지 않는다 — graph_check 가 검사).
-- 초안 범위: DEFAULT·PCHIP_TREE(모드 A, PRICE_MODE par, TREE_FWD_RULE continuous_from_spot, EXTRAP flat/flat_forward). KICPA_1130(모드 B)·REVIEWER_2024(piecewise_quarter_step)·EXCEL_KBI 는 `Constants.PROFILES_IMPLEMENTED` 밖 → 화면에 "초안 미구현", `runner.prepare_state` 가 `nodes.unsupported(C)` 사전 게이트로 NotImplementedError(노드 안의 raise 는 도달 불가 방어).
+- 앱 입력(커브 전용 모드): 매트릭스 업로드(csv/tsv/xlsx → io/matrix_parser.read_matrix_bytes) → `provenance.row_choice`(RF/RD 행 드롭다운) + `provenance.grid_settings`(노드 간격 STEP_MODES 월간/주간/일간, 산출 기간 ≤ CURVE_HORIZON_Y) → 캡처 업로드(data/raw/uploads). 상품 정보(instrument)는 선택 입력이며 없으면 헤드라인·등급 캡처를 요구하지 않는다. 결과 화면·`/api/export` 는 io/evidence_writer.dc_blocks(검토자 4블록)를 공용으로 쓴다.
+- 초안 범위: DEFAULT·PCHIP_TREE(모드 A, PRICE_MODE par, TREE_FWD_RULE continuous_from_spot, EXTRAP flat/flat_forward). KICPA_1130(모드 B)·REVIEWER_2024(piecewise_quarter_step)·EXCEL_REF 는 `Constants.PROFILES_IMPLEMENTED` 밖 → 화면에 "초안 미구현", `runner.prepare_state` 가 `nodes.unsupported(C)` 사전 게이트로 NotImplementedError(노드 안의 raise 는 도달 불가 방어).
 - 검토 반영(2026-09-07): 판단값은 전부 Constants(EPS_T·TOL_DF_MONOTONE·DF_RANGE·INTERP_METHOD_PRE·BLOCK_OF_ISSUANCE·RATING_ORDER·SENSITIVITY_COMBOS·PROFILES_IMPLEMENTED·BP_PER_UNIT·WEEKS_PER_YEAR); 증빙 작성기는 state 복사만(파생값은 노드가 기록); 격자 보간체 knot 왕복 게이트(엣지 `격자knot왕복불일치`); `run()` 은 승인·종단·sanity 노드 함수 항등을 검사; graph_check 가 실제 노드 구현(NODES_IMPL)의 쓰기 접두사도 추적; approved_state.json 해시는 사이드카 `.sha256`(파일 바이트 원상).
 - 엔진 테스트 `tests/test_app_pipeline.py`(fixture A done 경로·게이트 허용오차·프로필 필수·결정성·PCHIP_TREE). 실측(fixture A DEFAULT): RF spot_annual 0.5Y 0.0240934 / 10Y 0.0343360, RD 10Y 0.1585730 = recompute_boot live 와 일치.
 
 ## 금지 목록
-노드 내 라우팅, 타 노드 필드 쓰기, per_period→exp(), 결측 0 대입, 상수 하드코딩, 테스트 안 숫자 리터럴(상수 참조), constants 안 테스트 훅, Constants 상속 서브클래스(with_profile/items() 복사만), EXCEL_KBI 밖 엑셀 결함 재현, 출처 없는 공식, 완료 메시지만 있는 보고.
+노드 내 라우팅, 타 노드 필드 쓰기, per_period→exp(), 결측 0 대입, 상수 하드코딩, 테스트 안 숫자 리터럴(상수 참조), constants 안 테스트 훅, Constants 상속 서브클래스(with_profile/items() 복사만), EXCEL_REF 밖 엑셀 결함 재현, 출처 없는 공식, 완료 메시지만 있는 보고.

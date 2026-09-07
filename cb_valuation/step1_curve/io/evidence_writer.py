@@ -71,13 +71,27 @@ def dc_values(s, C, c: str) -> dict:
     }
 
 
-def _write_dc_sheet(ws, s, C, c: str) -> dict:
-    from openpyxl.styles import Font
-    st = C.XLSX_DC_STYLE
+def dc_blocks(s, C, c: str) -> list:
+    """XLSX_DC_BLOCKS 를 커브별로 치환한 블록 구조 [{title, rows:[{label, key, fmt, values}]}] — xlsx 작성기와 화면(/api/blocks)이 같은 함수를 쓴다."""
     m = C.RF_FREQ if c == "RF" else C.RD_FREQ
     rate = "RISK FREE RATE" if c == "RF" else "RISKY RATE"
     period = {1: "YEAR", 2: "HALF-YEAR", 4: "QUARTER", 12: "MONTH"}.get(m, f"1/{m}Y")
     vals = dc_values(s, C, c)
+    out = []
+    for bi, (title, rows) in enumerate(C.XLSX_DC_BLOCKS, start=1):
+        block = {"index": bi, "title": title.format(rate=rate, period=period), "rows": []}
+        for label, _src, fmt in rows:
+            key = label
+            if bi == 2 and label in ("{rate} - YTM", "SPOT RATE"): key = label + "#grid"
+            if bi == 3 and label == "WEEKS": key = "WEEKS#boot"
+            block["rows"].append({"label": label.format(rate=rate, period=period), "key": key, "fmt": fmt, "values": list(vals.get(key, []))})
+        out.append(block)
+    return out
+
+
+def _write_dc_sheet(ws, s, C, c: str) -> dict:
+    from openpyxl.styles import Font
+    st = C.XLSX_DC_STYLE
     ws[st["title_cell"]] = "무위험이자율" if c == "RF" else "위험이자율"; ws[st["title_cell"]].font = Font(bold=True)
     ws[st["date_cell"]] = s.provenance.valuation_date
     ws.column_dimensions[st["label_col"]].width = st["width_label"]
@@ -86,22 +100,20 @@ def _write_dc_sheet(ws, s, C, c: str) -> dict:
     ranges = {}
     first_col = ord(st["first_data_col"]) - 64
     max_col = first_col
-    for bi, (title, rows) in enumerate(C.XLSX_DC_BLOCKS, start=1):
-        ws.cell(r, 2, title.format(rate=rate, period=period)).font = Font(bold=st["block_title_bold"])
+    for block in dc_blocks(s, C, c):
+        bi = block["index"]
+        ws.cell(r, 2, block["title"]).font = Font(bold=st["block_title_bold"])
         r0 = r; r += 1
         if bi == 1:
             ws.cell(r, 2, s.provenance.curve_date)  # REV Rf_dc!B5 = 고시일
-        for label, _src, fmt in rows:
-            key = label
-            if bi == 2 and label in ("{rate} - YTM", "SPOT RATE"): key = label + "#grid"
-            if bi == 3 and label == "WEEKS": key = "WEEKS#boot"
-            data = vals.get(key, [])
-            ws.cell(r, 2, label.format(rate=rate, period=period))
+        for row in block["rows"]:
+            data = row["values"]
+            ws.cell(r, 2, row["label"])
             for j, v in enumerate(data):
                 cell = ws.cell(r, first_col + j, v)
-                cell.number_format = fmt
+                cell.number_format = row["fmt"]
             max_col = max(max_col, first_col + max(len(data), 1) - 1)
-            ranges[f"{c}:{label}"] = f"{st['first_data_col']}{r}:{_col(first_col + max(len(data), 1) - 1)}{r}"
+            ranges[f"{c}:{row['key']}"] = f"{st['first_data_col']}{r}:{_col(first_col + max(len(data), 1) - 1)}{r}"
             r += 1
         ranges[f"{c}:block{bi}"] = f"B{r0}:{_col(max_col)}{r - 1}"
         r += 1
@@ -120,6 +132,59 @@ def _write_table(ws, header, rows):
     return f"A1:{_col(max(len(header), 1))}{len(rows) + 1}"
 
 
+def _rows_used(s, C):
+    out = []
+    for c in C.CURVE_IDS:
+        r = s.rows[c.lower()]
+        if r:
+            out.append([c, r["row_index"], r["label_raw"], r.get("block"), r.get("block_requested"), r.get("rating"), r.get("notch"), f"nominal_m{C.RF_FREQ if c == 'RF' else C.RD_FREQ}"] + [r["ytm_pct"][t] for t in C.TENOR_LABELS])
+    return out
+
+
+def _flag_rows(s):
+    return [[f["severity"], f["code"], f.get("curve"), json.dumps(f.get("value"), ensure_ascii=False, default=str), f.get("threshold"), f.get("detail")]
+            for lst in (s.sanity.fail, s.sanity.approval_required, s.sanity.warn) for f in lst]
+
+
+def write_xlsx(path: str, s, C):
+    """XLSX_SHEETS 순서로 통합문서 작성(Rf_dc/Rd_dc 는 XLSX_DC_BLOCKS). 반환 (dc 범위, 시트 범위). openpyxl 없으면 ImportError."""
+    from openpyxl import Workbook
+    wb = Workbook(); wb.remove(wb.active)
+    ws = {name: wb.create_sheet(name) for name in C.XLSX_SHEETS}
+    rng, ranges = {}, {}
+    rows_used = _rows_used(s, C)
+    rng["INPUT_RAW"] = _write_table(ws["INPUT_RAW"], ["row_index", "kind", "group", "label"] + C.TENOR_LABELS, [[r["row_index"], r["kind_raw"], r["group_raw"], r["label_raw"]] + [r["ytm_pct"][t] for t in C.TENOR_LABELS] for r in s.input.rows])
+    rng["ROWS_USED"] = _write_table(ws["ROWS_USED"], ["curve", "row_index", "label", "block", "block_requested", "rating", "notch", "basis"] + C.TENOR_LABELS, rows_used)
+    prov = [(k, json.dumps(v, ensure_ascii=False, default=str) if isinstance(v, (dict, list)) else v) for k, v in json.loads(G.canonical_json(s.provenance)).items()]
+    rng["PROVENANCE"] = _write_table(ws["PROVENANCE"], ["field", "value"], prov)
+    rng["CONVENTIONS"] = _write_table(ws["CONVENTIONS"], ["constant", "value"], [(k, json.dumps(v, ensure_ascii=False, default=str)) for k, v in sorted(C.items().items())])
+    for c, name in (("RF", "Rf_dc"), ("RD", "Rd_dc")):
+        ranges.update(_write_dc_sheet(ws[name], s, C, c))
+    rng["PAR_CHECK"] = _write_table(ws["PAR_CHECK"], C.XLSX_COLUMNS["PAR_CHECK"], [[r["curve"], r["t"], r["n"], r["price"], r["target"], r["residual"], r["residual_x_face"]] for c in C.CURVE_IDS for r in s.par_check.per_maturity[c]])
+    fs_rows = [[c, r["step"], r["t"], r["prod_df_fwd"], r["df_spot"], r["diff_log"], r["diff_prod"]] for c in C.CURVE_IDS for r in (s.fwd_spot_check.rows.get(c, []) if isinstance(s.fwd_spot_check.rows, dict) else [])]
+    rng["FWD_SPOT_CHECK"] = _write_table(ws["FWD_SPOT_CHECK"], C.XLSX_COLUMNS["FWD_SPOT_CHECK"], fs_rows)
+    rng["SENSITIVITY"] = _write_table(ws["SENSITIVITY"], ["method", "space", "curve", "max_rel_df_diff", "note"], [[r["method"], r["space"], r["curve"], r["max_rel_df_diff"], r.get("note")] for r in s.sensitivity.table] + [["freq_alt", "", c, json.dumps(v, ensure_ascii=False), ""] for c, v in dict(s.sensitivity.freq_alt).items()])
+    hl = json.loads(G.canonical_json(s.headline))
+    rng["HEADLINE"] = _write_table(ws["HEADLINE"], ["field", "value"], [(k, json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v) for k, v in hl.items()])
+    rng["FLAGS"] = _write_table(ws["FLAGS"], ["severity", "code", "curve", "value", "threshold", "detail"], _flag_rows(s))
+    ap_rows = [[k, a.requested_at, a.snapshot_sha256, json.dumps([f["code"] for f in a.flags_seen], ensure_ascii=False), a.decision, a.approver, a.timestamp, a.comment, json.dumps(a.acknowledged_codes, ensure_ascii=False)]
+               for k, a in (("input", s.approval_input), ("exception", s.approval_exception), ("curve", s.approval_curve))]
+    rng["APPROVALS"] = _write_table(ws["APPROVALS"], C.XLSX_COLUMNS["APPROVALS"], ap_rows)
+    rng["RUN_PATH"] = _write_table(ws["RUN_PATH"], C.XLSX_COLUMNS["RUN_PATH"], [[i + 1] + list(p) for i, p in enumerate(s.run.path)])
+    wb.save(path)
+    return ranges, rng
+
+
+def export_xlsx(s, C, base_dir: str) -> str:
+    """화면 '엑셀 내려받기': 현재 state 로 같은 형식의 통합문서를 exports/ 에 쓴다(증빙 번들과 별개, 승인 불필요). 반환 경로."""
+    d = os.path.join(base_dir, "exports"); os.makedirs(d, exist_ok=True)
+    from datetime import datetime, timezone
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    path = os.path.join(d, f"curve_{_key(s)}_{stamp}.xlsx")
+    write_xlsx(path, s, C)
+    return path
+
+
 def write_bundle(s, C, base_dir: str) -> dict:
     key = _key(s)
     d = os.path.join(base_dir, "evidence", key); os.makedirs(d, exist_ok=True)
@@ -130,10 +195,7 @@ def write_bundle(s, C, base_dir: str) -> dict:
     _csv(os.path.join(d, ef["01"]), ["row_index", "kind", "group", "label"] + C.TENOR_LABELS,
          [[r["row_index"], r["kind_raw"], r["group_raw"], r["label_raw"]] + [r["ytm_pct"][t] for t in C.TENOR_LABELS] for r in s.input.rows]); add(ef["01"])
     # 02 rows used
-    rows_used = []
-    for c in C.CURVE_IDS:
-        r = s.rows[c.lower()]
-        if r: rows_used.append([c, r["row_index"], r["label_raw"], r.get("block"), r.get("block_requested"), r.get("rating"), r.get("notch"), f"nominal_m{C.RF_FREQ if c == 'RF' else C.RD_FREQ}"] + [r["ytm_pct"][t] for t in C.TENOR_LABELS])
+    rows_used = _rows_used(s, C)
     _csv(os.path.join(d, ef["02"]), ["curve", "row_index", "label", "block", "block_requested", "rating", "notch", "basis"] + C.TENOR_LABELS, rows_used); add(ef["02"])
     # 03 knots
     _csv(os.path.join(d, ef["03"]), ["curve", "tenor", "t", "ytm[nominal]"], [[c, k["tenor"], k["t"], k["ytm"]] for c in C.CURVE_IDS for k in s.grid.knots[c]]); add(ef["03"])
@@ -170,8 +232,7 @@ def write_bundle(s, C, base_dir: str) -> dict:
         fh.write(f"- 차이(곱) = {smp.get('diff_prod')!r}, 차이(로그) = {smp.get('diff_log')!r}\n- 전 격자점 최대: 로그 {s.fwd_spot_check.max_abs_err_log!r}, 곱 {s.fwd_spot_check.max_abs_err_prod!r} (게이트 TOL_FWD_SPOT_FAIL)\n")
     add(ef["08"])
     # 09 flags
-    flag_rows = [[f["severity"], f["code"], f.get("curve"), json.dumps(f.get("value"), ensure_ascii=False, default=str), f.get("threshold"), f.get("detail")]
-                 for lst in (s.sanity.fail, s.sanity.approval_required, s.sanity.warn) for f in lst]
+    flag_rows = _flag_rows(s)
     _csv(os.path.join(d, ef["09"]), ["severity", "code", "curve", "value", "threshold", "detail"], flag_rows); add(ef["09"])
     # 10 headline
     _json(os.path.join(d, ef["10"]), dict(s.headline)); add(ef["10"])
@@ -192,35 +253,14 @@ def write_bundle(s, C, base_dir: str) -> dict:
         for k, v in sorted(C.items().items()):
             fh.write(f"- {k} = `{json.dumps(v, ensure_ascii=False, default=str)[:300]}`\n")
     add("README_conventions.md")
-    # xlsx (필수)
-    xlsx_written, xlsx_path, ranges = False, None, {}
+    # xlsx (필수) — 같은 작성기를 화면 '엑셀 내려받기'(export_xlsx) 도 쓴다
+    xlsx_written, xlsx_path, ranges, rng = False, None, {}, {}
     try:
-        from openpyxl import Workbook
-        wb = Workbook(); wb.remove(wb.active)
-        ws = {name: wb.create_sheet(name) for name in C.XLSX_SHEETS}
-        rng = {}
-        rng["INPUT_RAW"] = _write_table(ws["INPUT_RAW"], ["row_index", "kind", "group", "label"] + C.TENOR_LABELS, [[r["row_index"], r["kind_raw"], r["group_raw"], r["label_raw"]] + [r["ytm_pct"][t] for t in C.TENOR_LABELS] for r in s.input.rows])
-        rng["ROWS_USED"] = _write_table(ws["ROWS_USED"], ["curve", "row_index", "label", "block", "block_requested", "rating", "notch", "basis"] + C.TENOR_LABELS, rows_used)
-        prov = [(k, json.dumps(v, ensure_ascii=False, default=str) if isinstance(v, (dict, list)) else v) for k, v in json.loads(G.canonical_json(s.provenance)).items()]
-        rng["PROVENANCE"] = _write_table(ws["PROVENANCE"], ["field", "value"], prov)
-        rng["CONVENTIONS"] = _write_table(ws["CONVENTIONS"], ["constant", "value"], [(k, json.dumps(v, ensure_ascii=False, default=str)) for k, v in sorted(C.items().items())])
-        for c, name in (("RF", "Rf_dc"), ("RD", "Rd_dc")):
-            ranges.update(_write_dc_sheet(ws[name], s, C, c))
-        rng["PAR_CHECK"] = _write_table(ws["PAR_CHECK"], C.XLSX_COLUMNS["PAR_CHECK"], [[r["curve"], r["t"], r["n"], r["price"], r["target"], r["residual"], r["residual_x_face"]] for c in C.CURVE_IDS for r in s.par_check.per_maturity[c]])
-        fs_rows = [[c, r["step"], r["t"], r["prod_df_fwd"], r["df_spot"], r["diff_log"], r["diff_prod"]] for c in C.CURVE_IDS for r in (s.fwd_spot_check.rows.get(c, []) if isinstance(s.fwd_spot_check.rows, dict) else [])]
-        rng["FWD_SPOT_CHECK"] = _write_table(ws["FWD_SPOT_CHECK"], C.XLSX_COLUMNS["FWD_SPOT_CHECK"], fs_rows)
-        rng["SENSITIVITY"] = _write_table(ws["SENSITIVITY"], ["method", "space", "curve", "max_rel_df_diff", "note"], [[r["method"], r["space"], r["curve"], r["max_rel_df_diff"], r.get("note")] for r in s.sensitivity.table] + [["freq_alt", "", c, json.dumps(v, ensure_ascii=False), ""] for c, v in dict(s.sensitivity.freq_alt).items()])
-        hl = json.loads(G.canonical_json(s.headline))
-        rng["HEADLINE"] = _write_table(ws["HEADLINE"], ["field", "value"], [(k, json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else v) for k, v in hl.items()])
-        rng["FLAGS"] = _write_table(ws["FLAGS"], ["severity", "code", "curve", "value", "threshold", "detail"], flag_rows)
-        ap_rows = [[k, a.requested_at, a.snapshot_sha256, json.dumps([f["code"] for f in a.flags_seen], ensure_ascii=False), a.decision, a.approver, a.timestamp, a.comment, json.dumps(a.acknowledged_codes, ensure_ascii=False)]
-                   for k, a in (("input", s.approval_input), ("exception", s.approval_exception), ("curve", s.approval_curve))]
-        rng["APPROVALS"] = _write_table(ws["APPROVALS"], C.XLSX_COLUMNS["APPROVALS"], ap_rows)
-        rng["RUN_PATH"] = _write_table(ws["RUN_PATH"], C.XLSX_COLUMNS["RUN_PATH"], [[i + 1] + list(p) for i, p in enumerate(s.run.path)])
-        xlsx_path = os.path.join(d, XLSX_NAME); wb.save(xlsx_path); xlsx_written = True; add(XLSX_NAME)
+        xlsx_path = os.path.join(d, XLSX_NAME)
+        ranges, rng = write_xlsx(xlsx_path, s, C)
+        xlsx_written = True; add(XLSX_NAME)
     except ImportError:
-        warnings.append("XLSX_SKIPPED: openpyxl 없음")
-        rng = {}
+        warnings.append("XLSX_SKIPPED: openpyxl 없음"); xlsx_path = None
     X = XLSX_NAME
     n06 = len(tg) + 1
     cell_map = {

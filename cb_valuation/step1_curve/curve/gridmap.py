@@ -14,7 +14,7 @@ from . import compounding as K
 class CurveOnGrid:
     def __init__(self, method: str, space: str, knot_t: list, spot_pp_rv: dict, m: int, extrap_left: str, extrap_right: str, eps_t: float):
         if extrap_left not in ("flat",) or extrap_right not in ("flat_forward", "flat_spot"):
-            raise NotImplementedError(f"외삽 규칙 {extrap_left}/{extrap_right} 는 초안 미구현(EXCEL_KBI 전용 규칙 포함)")
+            raise NotImplementedError(f"외삽 규칙 {extrap_left}/{extrap_right} 는 초안 미구현(EXCEL_REF 전용 규칙 포함)")
         if spot_pp_rv.get("basis") != f"per_period_m{m}":
             raise ValueError(f"spot_pp basis {spot_pp_rv.get('basis')} ≠ per_period_m{m}")
         self.method, self.space, self.m, self.eps = method, space, m, eps_t

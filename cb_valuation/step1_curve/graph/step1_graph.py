@@ -47,7 +47,7 @@ class Constants:
         "PCHIP_TREE": "DEFAULT 와 같은 부트스트랩, 트리 격자 보간만 PCHIP(g=r_c·t, log_df) — 선도곡선 연속·음의 선도 방지(보간법 변경 공시 필요)",
         "KICPA_1130": "모드 B(공시 마디 미지수 근찾기 + 중간 이표일 보간) + 관행적 가격 — 한국공인회계사회 실무사례 1130 준용",
         "REVIEWER_2024": "RF·RD 분기 부트스트랩, 주간 격자, 분기 계단 선도, 이산 할인 — 2024 내부 검토자 패키지 재현(대조 전용)",
-        "EXCEL_KBI": "엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지",
+        "EXCEL_REF": "엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지",
     }
     # --- 입력 레이아웃
     TENOR_LABELS = ["3M", "6M", "9M", "1Y", "1.5Y", "2Y", "2.5Y", "3Y", "4Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y", "50Y"]  # KIS-NET!D1:S1, BOOT!B3:Q3
@@ -74,12 +74,12 @@ class Constants:
         "natural_cubic": (False, "compare_only"), "bessel": (False, "compare_only"), "kruger": (False, "compare_only"),
         "smith_wilson": (False, "compare_only"), "monotone_convex": (False, "deferred_step2"),
     }
-    EXTRAP_LEFT = "flat"  # spot 공간: 현물 평탄(=선도 r_1 상수, 검토자 weeks1-13) ; log_df 공간: (0,0) 마디 포함 정규 구간 ; "origin_anchored" = VBA MF_INTERPOL Case1 (EXCEL_KBI 전용)
-    EXTRAP_RIGHT = "flat_forward"  # g(t)=g_n+g'(t_n−)(t−t_n) (카탈로그 §5) | "flat_spot"(Hagan-West) | "excel_zero"(VBA Empty→0, EXCEL_KBI 전용; 정상 모드 발동 시 FAIL)
+    EXTRAP_LEFT = "flat"  # spot 공간: 현물 평탄(=선도 r_1 상수, 검토자 weeks1-13) ; log_df 공간: (0,0) 마디 포함 정규 구간 ; "origin_anchored" = VBA MF_INTERPOL Case1 (EXCEL_REF 전용)
+    EXTRAP_RIGHT = "flat_forward"  # g(t)=g_n+g'(t_n−)(t−t_n) (카탈로그 §5) | "flat_spot"(Hagan-West) | "excel_zero"(VBA Empty→0, EXCEL_REF 전용; 정상 모드 발동 시 FAIL)
     EXTRAP_LEFT_FLAT_SEVERITY = "WARN"  # 트리 첫 스텝(t<첫 knot)은 구조적으로 항상 해당 → WARN ; "APPROVAL_REQUIRED" 로 되돌릴 수 있음(사용자 결정 2026-09-07: WARN 확정)
     CURVE_HORIZON_Y = 10.0  # BOOT!E29/T49 ; KICPA_1130 프로필 50
-    RF_SEED_3M = "none"  # | "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_KBI 전용)
-    RF_REGRID_RULE = "interp"  # | "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_KBI 전용)
+    RF_SEED_3M = "none"  # | "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_REF 전용)
+    RF_REGRID_RULE = "interp"  # | "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_REF 전용)
     MIN_KNOTS = 4  # PCHIP 끝점 3점식 요건 + 여유 (열린 결정)
     SENSITIVITY_COMBOS = [("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_annual"), ("linear", "spot_continuous")]  # 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단
     PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE")  # 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화
@@ -92,6 +92,9 @@ class Constants:
     BLOCK_FALLBACK = {"사모무보증": "공모무보증", "공모무보증": "사모무보증"}  # 요청 블록 결측 시 대체 (감사인 Q13 회신 2025-02-04: 사모 미고시 → 공모 사용) ; 대체 사용 → ROW_FALLBACK 승인
     # --- 격자·일수
     DAYCOUNT = "ACT/365"  # 보고서 T=1633/365 ; "30/360" = 워크시트 함수 YEARFRAC(MAIN_주가!B7,MAIN_주가!B6,0) (XL DATA!A4=3.475, dT=DATA!C4=A4/B4, BM!C3=DATA!$C$4)
+    STEP_MODES = {"monthly": 1.0 / 12.0, "weekly": 1.0 / 52.0, "daily": 1.0 / 365.0}  # 앱 노드 간격(월간/주간/일간) → dt(년, 달력 기준; 영업일 격자는 열린 결정) ; provenance.grid_settings.step
+    STEP_LABELS = {"monthly": "월간", "weekly": "주간", "daily": "일간"}  # 화면 표시
+    AGENCIES = ("KIS", "KAP", "NICE", "FN", "EG")  # 채권평가사 코드(KIS자산평가·한국자산평가·나이스피앤아이·에프앤자산평가·이지자산평가) — 화면 드롭다운
     TREE_GRID = {"mode": "report", "N": 234, "dt_weekly": 1.0 / 52.0}  # report: N 고정(보고서 234) | weekly: dt=1/52(검토자) | excel: N 고정 (XL DATA!B4=181)
     TREE_FWD_RULE = "continuous_from_spot"  # BM C-FWD ; | "piecewise_quarter_step" (검토자 Rf_dc 분기 이산선도→주간)
     NODE_DISCOUNT_CONV = "3_continuous_fwd"  # 감사인 Q8 ③ exp(−f·dt) = XL BM row9, 한공회 §3.7.4.1 ; ① "1_discrete_fwd"(검토자 Check list!E34), ② "2_quarterly_fwd"
@@ -118,7 +121,7 @@ class Constants:
     FWD_JUMP_WARN_BP = 100.0  # 인접 스텝 연속선도 점프 (검토자 수용 톱니 RF 35bp/RD 250bp — 열린 결정)
     RD_MIN_SPREAD = 0.0  # RD_spot − RF_spot < 0 → RD_LT_RF 승인
     CURVE_DATE_MAX_LAG_DAYS = 3  # 2024-12-31 휴장 vs 12-30 고시 (사용자 결정 2026-09-07: 3일) ; lag<0 또는 >3 → FAIL, 0<lag≤3 → DATE_LAG 승인
-    HEADLINE_RULE = "interp_linear_ytm"  # 검토자 Check list!E44 직선보간 (사용자 결정 2026-09-07 확정) ; | "ceil_tenor" (EXCEL_KBI: stale 5Y knot 2.765/11.854, T∈(4,5] 기준)
+    HEADLINE_RULE = "interp_linear_ytm"  # 검토자 Check list!E44 직선보간 (사용자 결정 2026-09-07 확정) ; | "ceil_tenor" (EXCEL_REF: stale 5Y knot 2.765/11.854, T∈(4,5] 기준)
     HEADLINE_DEFS = ["interp_linear_ytm", "ceil_tenor", "nearest_tenor", "spot_annual_at_T", "spot_cont_at_T"]  # 진단표 전용
     HEADLINE_ROUND_DIGITS = 3  # 사용자 결정 2026-09-07: 보고서 표기(2.765/11.854)와 같은 % 소수 3자리 ROUND_HALF_UP 비교
     PAR_FACE = 10000  # 검토자 PV OF BOND 10000
@@ -127,9 +130,10 @@ class Constants:
     BASIS = ("nominal_m2", "nominal_m4", "per_period_m2", "per_period_m4", "annual_eff", "continuous", "per_step_simple")  # 한공회 §3.7.4.4
     LABEL_GRAMMAR = {"RF": r"^\s*국고채", "RD": r"회사채\s*(AAA|AA[+\-0]?|A[+\-0]?|BBB[+\-0]?|BB[+\-0]?|B[+\-0]?)\s*$",
                      "BLOCK": r"(공모|사모)\s*무보증"}  # KIS-NET!B2, B39, B54, C42, C58
-    PROVENANCE_REQUIRED_FIELDS = ("source_agency", "curve_date", "valuation_date", "file_sha256", "raw_copy_path", "downloaded_at", "operator", "instrument.maturity_date",
-                                  "method_choice.profile", "method_choice.chosen_by")  # 감사인 Q12 + 프로필 선택(PROFILE_SELECTION) ; 누락 → FAIL
-    PROVENANCE_APPROVAL_FIELDS = ("capture_path", "instrument.rating_evidence.capture_path")  # 감사인 Q12-2·Q13-1 캡처 ; 누락 → CAPTURE_MISSING 승인
+    PROVENANCE_REQUIRED_FIELDS = ("source_agency", "curve_date", "valuation_date", "file_sha256", "raw_copy_path", "downloaded_at", "operator", "grid_settings.step", "grid_settings.horizon_years",
+                                  "method_choice.profile", "method_choice.chosen_by")  # 감사인 Q12 + 격자 설정(노드 간격·산출 기간) + 프로필 선택(PROFILE_SELECTION) ; 누락 → FAIL. 상품(만기·등급)은 선택 입력
+    PROVENANCE_APPROVAL_FIELDS = ("capture_path",)  # 감사인 Q12-2 사용 행 캡처(이미지/PDF) ; 누락 → CAPTURE_MISSING 승인
+    PROVENANCE_APPROVAL_FIELDS_PRODUCT = ("instrument.rating_evidence.capture_path",)  # 감사인 Q13-1 등급 캡처 — 상품(등급) 정보가 입력된 경우에만 요구
     HUMAN_NODES = ("approve_input", "approve_exception", "approve_curve")
     TERMINAL_NODES = ("done", "fail", "wait_for_human")
     HUMAN_EDGE_ORDER = {  # graph_check 가 이름 시퀀스 완전 일치를 검사
@@ -173,9 +177,9 @@ class Constants:
                     "FWD_SPOT_CHECK": ["curve", "step", "t", "prod_df_fwd", "df_spot", "diff_log", "diff_prod"],  # 감사인 Q11
                     "RUN_PATH": ["seq", "from", "condition", "to", "ts_utc", "resume_n"],
                     "APPROVALS": ["kind", "requested_at", "snapshot_sha256", "flags_seen", "decision", "approver", "timestamp", "comment", "acknowledged_codes"]}  # 열 지향 시트만 ; Rf_dc/Rd_dc 는 XLSX_DC_BLOCKS
-    PROFILES = {  # 상수 오버라이드 dict 일 뿐 판단 로직 없음. fixture 매핑: A=DEFAULT, B=EXCEL_KBI, C=REVIEWER_2024, D=KICPA_1130, PCHIP_TREE=A 입력 재사용
+    PROFILES = {  # 상수 오버라이드 dict 일 뿐 판단 로직 없음. fixture 매핑: A=DEFAULT, B=EXCEL_REF, C=REVIEWER_2024, D=KICPA_1130, PCHIP_TREE=A 입력 재사용
         "DEFAULT": {},
-        "EXCEL_KBI": {"EXCEL_REPLICATE": True, "RF_SEED_3M": "excel_ytm_half", "RF_REGRID_RULE": "excel_midpoint_per_period",
+        "EXCEL_REF": {"EXCEL_REPLICATE": True, "RF_SEED_3M": "excel_ytm_half", "RF_REGRID_RULE": "excel_midpoint_per_period",
                       "EXTRAP_LEFT": "origin_anchored", "EXTRAP_RIGHT": "excel_zero", "HEADLINE_RULE": "ceil_tenor",
                       "TREE_GRID": {"mode": "excel", "N": 181, "dt_weekly": None}, "DAYCOUNT": "30/360"},  # XL DATA!A4=3.475(YearFrac basis 0), B4=181
         "REVIEWER_2024": {"RF_FREQ": 4, "RD_FREQ": 4, "TREE_GRID": {"mode": "weekly", "N": None, "dt_weekly": 1.0 / 52.0},
@@ -239,7 +243,9 @@ def new_state(C=Constants) -> NS:
                current_node=None, path=[], status="running", paused_at_node=None, snapshot_path=None, paused_at=None, resume_n=0),
         input=NS(raw_text=None, file_sha256=None, n_rows=0, header_labels=[], header_ok=False, rows=[], parse_errors=[], zero_value_cells=[]),
         provenance=NS(source_agency=None, agencies=[], averaging=False,
-                      method_choice=NS(profile=None, interp_method=None, interp_space_grid=None, chosen_by=None, chosen_at=None),curve_date=None, valuation_date=None, date_lag_days=None,
+                      method_choice=NS(profile=None, interp_method=None, interp_space_grid=None, chosen_by=None, chosen_at=None),
+                      grid_settings=NS(step=None, horizon_years=None), row_choice=NS(rf_row_index=None, rd_row_index=None),
+                      curve_date=None, valuation_date=None, date_lag_days=None,
                       raw_copy_path=None, downloaded_at=None, operator=None, capture_path=None, complete=False,
                       instrument=NS(issuer=None, cb_name=None, maturity_date=None, issuance_type=None, rating=None,
                                     prior_rating_basis=None, prior_block_basis=None, event_dates=[],
@@ -250,7 +256,7 @@ def new_state(C=Constants) -> NS:
         approval_input=_approval(),
         rows=NS(rf=None, rd=None, rd_fallback_used=False, rd_fallback_reason=None, rating_consistency_ok=None, block_consistency_ok=None,
                 ytm=curve(None), knot_tenors=curve([]), missing_knots=curve([]), usable_knot_count=curve(0)),
-        grid=NS(knots=curve([]), boot_times=curve([]), horizon_years=None, remaining_years=None, unused_tenors=curve([]),
+        grid=NS(knots=curve([]), boot_times=curve([]), horizon_years=None, remaining_years=None, maturity_years=None, unused_tenors=curve([]),
                 tree=NS(N=None, T=None, dt_mode=None, dt=[], times=[], daycount=None, event_times=[])),
         interp=NS(method=None, method_pre=None, space_pre=None, space_grid=None, extrap_left=None, extrap_right=None, is_local=None,
                   par_coupon_on_grid=None, ytm_on_coupon_grid=curve(None), knot_roundtrip_max_err=None, all_finite=False, extrapolated_points=curve([]), coupon_grid_extrap_used=False),
@@ -315,7 +321,8 @@ def input_stage_flags(s: NS, C=Constants) -> list:
     lag = s.provenance.date_lag_days
     if _fin(lag) and 0 < lag <= C.CURVE_DATE_MAX_LAG_DAYS:
         out.append({"severity": "APPROVAL_REQUIRED", "code": "DATE_LAG", "curve": None, "value": lag, "threshold": C.CURVE_DATE_MAX_LAG_DAYS})
-    for f in C.PROVENANCE_APPROVAL_FIELDS:
+    fields = list(C.PROVENANCE_APPROVAL_FIELDS) + (list(C.PROVENANCE_APPROVAL_FIELDS_PRODUCT) if s.provenance.instrument.rating else [])
+    for f in fields:
         if _get_path(s.provenance, f) in (None, ""):
             out.append({"severity": "APPROVAL_REQUIRED", "code": "CAPTURE_MISSING", "curve": None, "value": f, "threshold": None})
     if s.input.zero_value_cells:
@@ -370,13 +377,13 @@ node_approve_exception = _human("exception")
 node_approve_curve = _human("curve")
 
 def node_select_rows(s, C):
-    """rows.*: RF=국고채, RD=회사채+등급(노칭)+블록(BLOCK_FALLBACK), 전기 등급·블록 일관성, ytm_pct×PCT_TO_DEC → ytm RateVector(basis nominal_m{RF_FREQ}/nominal_m{RD_FREQ} ∈ BASIS), knot_tenors=C.knot_tenors(curve), missing_knots."""
+    """rows.*: RF/RD 행 = provenance.row_choice(사용자 드롭다운 선택; 앱 기본) 또는 상품 정보(등급+BLOCK_OF_ISSUANCE, BLOCK_FALLBACK 대체 시 사실 기록), 전기 등급·블록 일관성, ytm_pct×PCT_TO_DEC → ytm RateVector(basis nominal_m{RF_FREQ}/nominal_m{RD_FREQ} ∈ BASIS), knot_tenors=C.knot_tenors(curve), missing_knots."""
     for c in C.CURVE_IDS:
         if not s.rows.knot_tenors[c]:
             s.rows.knot_tenors[c] = C.knot_tenors(c)
 
 def node_build_grid(s, C):
-    """grid.*: knots(≤horizon), boot_times(1/m 격자), remaining_years(DAYCOUNT), tree(N,T,dt,event_times)."""
+    """grid.*: knots(≤horizon), boot_times(1/m 격자), 산출 격자 = provenance.grid_settings(step∈STEP_MODES, horizon_years=T → N=T/dt; 앱 기본) 또는 상품 만기(TREE_GRID·DAYCOUNT), remaining_years=T, maturity_years(만기일 있을 때만), tree(N,T,dt,event_times)."""
     if s.grid.horizon_years is None:
         s.grid.horizon_years = C.CURVE_HORIZON_Y
 
@@ -413,11 +420,11 @@ def node_verify_fwd_spot(s, C):
     pass
 
 def node_run_sensitivity(s, C):
-    """sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_KBI 면 excel_recon."""
+    """sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_REF 면 excel_recon."""
     pass
 
 def node_compute_headline(s, C):
-    """headline.*: HEADLINE_RULE 잔여만기 YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None)."""
+    """headline.*: HEADLINE_RULE 잔여만기(grid.maturity_years) YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None). 만기일 없는 커브 전용 실행에서는 후보 없음·None."""
     s.headline.rule = C.HEADLINE_RULE
     rh = s.provenance.instrument.reported_headline
     s.headline.reported_rf, s.headline.reported_rd = rh.rf_pct, rh.rd_pct

@@ -12,7 +12,7 @@
 
 ## B. 검증 규칙
 5. **완료 메시지를 믿지 않는다**: "부트스트랩 완료"는 증거가 아니다. par 잔차표, Π DF_fwd − DF_spot 잔차, knot round-trip, 골든값 비교의 **숫자**를 본다.
-6. **다른 구성요소로 재계산**: 산출한 컴포넌트가 아닌 별도 테스트/에이전트가 fixture(A 라이브, B 엑셀 캐시, C 검토자, D 한공회; 프로필 5종 `Constants.PROFILES` = DEFAULT·EXCEL_KBI·REVIEWER_2024·KICPA_1130·PCHIP_TREE ↔ A/B/C/D, PCHIP_TREE 는 A 입력 재사용)로 재계산해 대조한다. 골든값 허용오차는 `TOL_GOLDEN_ABS[key]` — 키는 fixture id 가 아니라 산출물 단위(`A`·`B`·`C_spot`·`C_fwd_weekly`·`C_pi`·`D`; fixture C 는 세 키로 나뉘므로 `"C"` 로 인덱싱하지 않는다. 키 목록·값은 GRAPH_SPEC §11), 엑셀 재현은 `TOL_EXCEL_RECON`(EXCEL_KBI 프로필). 원본 엑셀 대조는 stale G/V를 주입한 재조정 모드로만 유효하다.
+6. **다른 구성요소로 재계산**: 산출한 컴포넌트가 아닌 별도 테스트/에이전트가 fixture(A 라이브, B 엑셀 캐시, C 검토자, D 한공회; 프로필 5종 `Constants.PROFILES` = DEFAULT·EXCEL_REF·REVIEWER_2024·KICPA_1130·PCHIP_TREE ↔ A/B/C/D, PCHIP_TREE 는 A 입력 재사용)로 재계산해 대조한다. 골든값 허용오차는 `TOL_GOLDEN_ABS[key]` — 키는 fixture id 가 아니라 산출물 단위(`A`·`B`·`C_spot`·`C_fwd_weekly`·`C_pi`·`D`; fixture C 는 세 키로 나뉘므로 `"C"` 로 인덱싱하지 않는다. 키 목록·값은 GRAPH_SPEC §11), 엑셀 재현은 `TOL_EXCEL_RECON`(EXCEL_REF 프로필). 원본 엑셀 대조는 stale G/V를 주입한 재조정 모드로만 유효하다.
 7. **두 갈래를 항상 확인**: 정상 입력(완료 경로)과 오염 입력(실패/승인 경로)을 모두 실행한 결과를 제시한다. 시나리오는 `graph_check.SCENARIOS`(= GRAPH_SPEC §4)의 id 만 인용한다 — 정상 경로 A01~A04, 오염·경계 경로 E01~E50(엣지 68개 전부 커버; `/two-branch` 로 그래프(스텁)·엔진 양쪽 확인). 판정 기준은 시나리오별 기대 마지막 엣지 이름·기대 status 이며, 한쪽만 통과한 테스트는 미완료다.
 8. **역전 커브는 정상**: YTM/현물의 단조성을 실패 조건으로 만들지 않는다(한공회 2023-05-03 국채 1.5Y > 3Y). DF의 (0,1]·감소성만 하드 조건.
 9. **정밀도 주장에는 측정치**: "일치한다"가 아니라 `max|diff| = <측정값> (n=<표본 수>, 기준 <상수명>)` 처럼 최대 오차·표본 수·비교한 상수명(`TOL_PAR_FAIL` 등)을 쓴다. 측정값은 테스트·`cb_valuation/step1_curve/reference/` 스크립트 출력 원문에서 옮기고, 허용오차 값 자체는 적지 않는다(GRAPH_SPEC §11).

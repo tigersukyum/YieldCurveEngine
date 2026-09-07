@@ -113,6 +113,8 @@ def happy_state(Cc=C):
     s.provenance.update(source_agency="KIS", curve_date="2025-12-31", valuation_date="2025-12-31", raw_copy_path="data/raw/2025-12-31/x.csv",
                         downloaded_at="2025-12-31T09:00:00+09:00", operator="tester", capture_path="evidence/capture.png")
     s.provenance.instrument.update(maturity_date="2029-06-21", issuance_type="사모", rating="BB+")
+    s.provenance.grid_settings.update(step="weekly", horizon_years=Cc.CURVE_HORIZON_Y)
+    s.provenance.row_choice.update(rf_row_index=2, rd_row_index=58)
     s.provenance.method_choice.update(profile=Cc.PROFILE_NAME, chosen_by="tester", chosen_at="2025-12-31T09:00:00+09:00")
     s.provenance.instrument.rating_evidence.capture_path = "evidence/rating.png"
     s.labels.rf_candidates = [{"row_index": 2}]
@@ -176,7 +178,7 @@ SCENARIOS = [
     ("E01", "헤더 불일치", C, lambda s: (s.input.update(header_ok=False), s)[1], {}, None, "헤더불일치", "failed"),
     ("E02", "파싱 오류", C, lambda s: (s.input.parse_errors.append("row 7: not numeric"), s)[1], {}, None, "파싱오류", "failed"),
     ("E03", "행 0개", C, lambda s: (s.input.update(n_rows=0), s)[1], {}, None, "행없음", "failed"),
-    ("E04", "출처 불완전(만기일 없음)", C, lambda s: (s.provenance.instrument.update(maturity_date=None), s)[1], {}, None, "출처불완전", "failed"),
+    ("E04", "출처 불완전(노드 간격 미선택)", C, lambda s: (s.provenance.grid_settings.update(step=None), s)[1], {}, None, "출처불완전", "failed"),
     ("E05", "curve_date 지연 5일", C, lambda s: _lag(s, "2025-12-26"), {}, None, "기준일역전_또는_지연초과", "failed"),
     ("E06", "curve_date 가 평가기준일보다 미래(lag −1)", C, lambda s: _lag(s, "2026-01-01"), {}, None, "기준일역전_또는_지연초과", "failed"),
     ("E07", "curve_date 지연 1일 → DATE_LAG 승인 후 done", C, lambda s: _lag(s, "2025-12-30"),
@@ -402,7 +404,7 @@ def ownership_checks():
         with open(fixture, encoding="utf-8-sig") as fh:
             text = fh.read()
         form = {"profile": "DEFAULT", "matrix_text": text, "valuation_date": "2025-12-31", "curve_date": "2025-12-31", "curve_set_id": "GC", "operator": "graph_check",
-                "source_agency": "KIS", "downloaded_at": "2025-12-31T09:00:00+09:00", "instrument": {"maturity_date": "2029-06-21", "issuance_type": "사모", "rating": "BB+"}}
+                "source_agency": "KIS", "downloaded_at": "2025-12-31T09:00:00+09:00", "step": "weekly", "horizon_years": 10, "rf_row_index": 2, "rd_row_index": 58}
         s0, Cc = RUN.prepare_state(form, tmp)
         log, who = {}, {"node": None}
         s = _tracked_state(s0, log, who)

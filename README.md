@@ -21,13 +21,15 @@ python -m unittest discover -s cb_valuation/step1_curve/tests -v
 start_app.bat                                          # 더블클릭 → 로컬 서버 + 브라우저 http://127.0.0.1:8765
 python -m cb_valuation.step1_curve.app.server --open   # 같은 것(포트 변경: --port 8888)
 ```
-왼쪽 = 입력(프로필 선택 필수 → 매트릭스 붙여넣기 → 상품·출처) → 결과 표 → 승인 → 증빙, 오른쪽 = `EDGES` 그래프에서 **현재 노드·지나온 엣지가 색으로 표시**된다(정지 = 노란 승인 노드). "연습 데이터 불러오기" 로 fixture A(2025-12-31)를 채워 바로 돌려볼 수 있다. 서버는 127.0.0.1 전용이며 금리표는 PC 밖으로 나가지 않는다.
+왼쪽 화면 순서: ① **YTM 매트릭스 업로드**(드래그 앤 드롭 또는 파일 선택 — 평가사 xlsx/xlsm 또는 CSV/TSV; "연습 데이터" 버튼으로 바로 시험 가능) → ② **커브 설정**(프로필=보간법 묶음 필수 선택, **노드 간격 월간/주간/일간**, 산출 기간(년), 무위험/위험 **행 드롭다운**(매트릭스에서 읽어 채움), 평가기준일·고시일, 평가사, 담당자) → ③ 출처 증빙(선택: 사용한 행의 화면 캡처 이미지/PDF 업로드 — 감사인 Q12) → 실행 → 승인(입력 확인 → 계산 → 예외/최종 승인) → 결과. 오른쪽에는 `EDGES` 그래프에서 **현재 노드·지나온 엣지가 색으로 표시**된다(정지 = 노란 승인 노드).
 
-초안 범위: DEFAULT(모드 A + 선형)·PCHIP_TREE(트리 격자 PCHIP/log_df) 프로필. KICPA_1130·REVIEWER_2024·EXCEL_KBI 는 화면에 "초안 미구현"으로 표시된다.
+결과 탭은 검토자 형식(`Rf_dc`/`Rd_dc` 4블록: 마디 YTM·현물 / 격자 YTM·현물·선도 / 부트스트래핑·par 검증 / 격자 선도·Π DF 검증)을 화면에 표로 보여주고 **"엑셀 내려받기"** 로 같은 형식의 xlsx 를 즉시 내보낸다(`exports/`). 최종 승인까지 마치면 감사 증빙 번들(`evidence/`)이 별도로 생성된다. 상품(만기·등급·발행형태) 정보는 이 단계의 앱 화면에서 받지 않는다(2단계용 선택 입력으로만 남아 있음).
+
+초안 범위: DEFAULT(모드 A + 선형)·PCHIP_TREE(격자 PCHIP/log_df) 프로필. KICPA_1130·REVIEWER_2024·EXCEL_REF 는 화면에 "초안 미구현"으로 표시된다. 서버는 127.0.0.1 전용이며 금리표는 PC 밖으로 나가지 않는다.
 
 ## 명령행
 ```
-python -m cb_valuation.step1_curve.app.cli run --matrix <kisnet.csv> --valuation-date YYYY-MM-DD --profile DEFAULT|PCHIP_TREE --maturity-date YYYY-MM-DD --rating BB+ --issuance 사모|공모 [--curve-set-id CB1 --operator 이름 --capture-path … --reported-rf 2.765 …]
+python -m cb_valuation.step1_curve.app.cli run --matrix <matrix.csv|xlsx> --valuation-date YYYY-MM-DD --profile DEFAULT|PCHIP_TREE --step monthly|weekly|daily --horizon 10 --rf-row 2 --rd-row 58 [--curve-set-id CURVE1 --operator 이름 --capture-path … --downloaded-at …]  # 상품 정보(--maturity-date --rating --issuance …)는 선택
 python -m cb_valuation.step1_curve.app.cli resume --snapshot state/<key>/snapshot__<node>__<n>.json --decision approved|rejected --approver <이름> --comment "<문장>" [--ack CODE ...]
 ```
 정지(사람 승인 대기)는 exit code 3 이며 스냅샷 경로를 출력한다. `--profile` 은 필수다(보간법·프로필은 실행 시 사용자가 선택; 선택은 provenance 에 기록되고 입력 승인 화면에 표시된다). 산출물: `state/<평가기준일>__<세트>/`(스냅샷·approved_state.json), `evidence/<…>/`(01~12 + README_conventions.md + checklist_map.json + evidence.xlsx), `data/raw/<고시일>/`(원본 사본).

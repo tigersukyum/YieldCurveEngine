@@ -30,7 +30,14 @@ def node_compute_headline(s, C):
     s.headline.rule = C.HEADLINE_RULE
     rh = s.provenance.instrument.reported_headline
     s.headline.reported_rf, s.headline.reported_rd = rh.rf_pct, rh.rd_pct
-    T = s.grid.remaining_years
+    T = s.grid.maturity_years  # 상품 만기일이 있을 때만(커브 전용 실행은 None)
+    if T is None:
+        s.headline.candidates = []
+        s.headline.rf_ytm_remaining = s.headline.rd_ytm_remaining = s.headline.rf_spot_remaining_annual = s.headline.rd_spot_remaining_annual = None
+        s.headline.rating_applied = s.rows.rd["rating"] if s.rows.rd else None
+        s.headline.block_applied = s.rows.rd["block"] if s.rows.rd else None
+        s.headline.match_ok = None
+        return
     vals, cands = {}, []
     for rule in C.HEADLINE_DEFS:
         row = {"def": rule}

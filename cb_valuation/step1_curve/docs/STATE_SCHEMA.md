@@ -2,7 +2,7 @@
 
 원천: `graph/step1_graph.py` 의 `new_state()` 가 이 문서와 1:1 이다. 아래 §1 표는 `new_state()` 출력(JSON 덤프) 전체에서 만들었고 누락 필드는 0개다. 스키마를 바꿀 때는 `new_state()`·이 문서·`graph_check`(노드 쓰기 추적 `ownership_checks`)를 함께 갱신하고 `STATE_SCHEMA_VERSION` 을 올린다(`export_edges_json()` 이 `schema_version` 으로 내보낸다).
 
-그래프 규모·시나리오·상수 값은 생성 문서 `docs/GRAPH_SPEC.md` 를 인용한다 — 노드 §1, 엣지 68개 §2, 두 갈래 시나리오 A01~A04·E01~E50 §4, 심각도 표 §5, 승인 정책 §6, 증빙 규격 §10, 상수 값 §11. 프로필은 5종(DEFAULT, EXCEL_KBI, REVIEWER_2024, KICPA_1130, PCHIP_TREE)이며 `run.profile` 에 기록된다.
+그래프 규모·시나리오·상수 값은 생성 문서 `docs/GRAPH_SPEC.md` 를 인용한다 — 노드 §1, 엣지 68개 §2, 두 갈래 시나리오 A01~A04·E01~E50 §4, 심각도 표 §5, 승인 정책 §6, 증빙 규격 §10, 상수 값 §11. 프로필은 5종(DEFAULT, EXCEL_REF, REVIEWER_2024, KICPA_1130, PCHIP_TREE)이며 `run.profile` 에 기록된다.
 
 ## 0. 규칙
 
@@ -50,6 +50,8 @@
 | provenance | raw_copy_path / downloaded_at / operator | str / ISO / str (\|None) — data/raw 사본(러너가 저장)·다운로드 시각·담당자(PROVENANCE_REQUIRED_FIELDS) | runner |
 | provenance | capture_path | str\|None — 행 렌더링 캡처(감사인 Q12). PROVENANCE_APPROVAL_FIELDS(결측 → CAPTURE_MISSING) | runner |
 | provenance | complete | bool — PROVENANCE_REQUIRED_FIELDS 전부 존재(`file_sha256` 는 `input.file_sha256` 에서 읽음). False → 출처불완전 → fail | record_provenance |
+| provenance.grid_settings | step / horizon_years | str\|None / float\|None — 산출 격자(앱 드롭다운: STEP_MODES 월간·주간·일간 → dt) 와 산출 기간(년, ≤ CURVE_HORIZON_Y). PROVENANCE_REQUIRED_FIELDS(미선택 → 출처불완전) | runner |
+| provenance.row_choice | rf_row_index / rd_row_index | int\|None — 사용자가 드롭다운으로 고른 RF/RD 행 번호(파일 행 = 평가사 엑셀 행). None 이면 select_rows 가 상품 정보(등급·발행형태)로 고른다 | runner |
 | provenance.method_choice | profile / interp_method / interp_space_grid / chosen_by / chosen_at | str\|None ×5 — **사용자가 실행 시 고른 프로필**(PROFILE_SELECTION=required; CLI `--profile`, 화면 목록 PROFILE_DESCRIPTIONS). `profile`·`chosen_by` 는 PROVENANCE_REQUIRED_FIELDS(미선택 → 출처불완전); `profile ≠ C.PROFILE_NAME` → 엣지 프로필불일치; interp_method/space 는 노드가 C 에서 복사 | record_provenance(선택값은 CLI 가 state 에 넣음) |
 | provenance.instrument | issuer / cb_name / maturity_date / issuance_type / rating | str\|None ×5 — issuance_type 공모\|사모(BLOCK_OF_ISSUANCE 로 블록 결정); maturity_date 는 PROVENANCE_REQUIRED_FIELDS | runner |
 | provenance.instrument | prior_rating_basis / prior_block_basis | str\|None — 전기 등급·블록(RATING_CHANGED·BLOCK_CHANGED 비교 기준, 감사인 Q13) | record_provenance |
@@ -79,9 +81,10 @@
 | grid | knots | {c: list} — 사용 마디(≤ horizon; 시간 키 round(t, T_ROUND_DIGITS)). 항목 키 미확인 | build_grid |
 | grid | boot_times | {c: list[float]} — 1/m 이표 격자(년) | build_grid |
 | grid | horizon_years | float\|None — CURVE_HORIZON_Y | build_grid |
-| grid | remaining_years | float\|None — 잔여만기(DAYCOUNT). 게이트 잔여만기비유한 → 만기초과 | build_grid |
+| grid | remaining_years | float\|None — 산출 기간 T(grid_settings.horizon_years; 상품 모드에서는 만기까지의 잔여만기, DAYCOUNT). 게이트 잔여만기비유한 → 만기초과(T ≤ CURVE_HORIZON_Y) | build_grid |
+| grid | maturity_years | float\|None — 상품 만기일이 있을 때의 잔여만기(헤드라인용; 커브 전용 실행은 None) | build_grid |
 | grid | unused_tenors | {c: list[str]} — 격자에서 제외된 공시 테너(TENOR_DROPPED WARN) | build_grid |
-| grid.tree | N / T / dt_mode / dt / times / daycount / event_times | int / 년 / str / list / list / str / list — TREE_GRID 규칙·DAYCOUNT(FORMULA_REFERENCE §5.2), 이벤트일 매핑. event_times 항목 키 미확인 | build_grid |
+| grid.tree | N / T / dt_mode / dt / times / daycount / event_times | int / 년 / str / list / list / str / list — grid_settings(step → dt=STEP_MODES[step], N=round(T/dt), dt_mode=step) 또는 상품 모드 TREE_GRID 규칙·DAYCOUNT(FORMULA_REFERENCE §5.2), 이벤트일 매핑 `{label, date, t, step}` | build_grid |
 | interp | method / method_pre / space_pre / space_grid / extrap_left / extrap_right | str\|None ×6 — INTERP_METHOD(트리 격자) / INTERP_METHOD_PRE(이표격자) / INTERP_SPACE_PRE / INTERP_SPACE_GRID / EXTRAP_LEFT / EXTRAP_RIGHT 복사(공시 항목 C37·한공회) | interpolate |
 | interp | ytm_on_coupon_grid | {c: RateVector\|None} — 이표격자 위 보간 YTM(basis nominal_m{m}; 증빙 'YTM - YEARLY') | interpolate |
 | interp | is_local | bool\|None — `INTERP_TABLE[method][0]` | interpolate |
@@ -125,7 +128,7 @@
 | sensitivity | table | list — 교차 방법·공간·주기 DF 상대차표(주 커브 불변). 항목 키 미확인 | run_sensitivity |
 | sensitivity | max_rel_df_diff | float\|None — CROSS_METHOD_DF WARN | run_sensitivity |
 | sensitivity | freq_alt | dict — FREQ_SENSITIVITY_SET 변형 결과(초기값 빈 `NS()`). 항목 구조 미확인. 비어 있지 않으면 FREQ_SENSITIVITY WARN(value = `dict(freq_alt)`) | run_sensitivity |
-| sensitivity | excel_recon | dict\|None — EXCEL_KBI 프로필 전용 엑셀 재조정 결과(TOL_EXCEL_RECON) | run_sensitivity |
+| sensitivity | excel_recon | dict\|None — EXCEL_REF 프로필 전용 엑셀 재조정 결과(TOL_EXCEL_RECON) | run_sensitivity |
 | headline | rule | str\|None — HEADLINE_RULE 복사 | compute_headline |
 | headline | rf_ytm_remaining / rd_ytm_remaining | float\|None — 잔여만기 YTM(HEADLINE_RULE), basis nominal_m2 / nominal_m4. 단위(% / decimal) 미확인 | compute_headline |
 | headline | rf_spot_remaining_annual / rd_spot_remaining_annual | float\|None — 잔여만기 spot, basis annual_eff. 단위 미확인 | compute_headline |

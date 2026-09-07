@@ -1,6 +1,6 @@
 # GRAPH_SPEC — 1단계 이자율 커브 그래프 (자동 생성: graph/export_spec.py ← graph/step1_graph.py + graph_check.SCENARIOS)
 
-노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `0ff6ac78bf7a…` · spec `042ab5356dee…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
+노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `6d4d8865a43d…` · spec `f714a5960536…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
 
 흐름의 유일한 정의는 `graph/step1_graph.py` 의 `EDGES` 배열이다. 이 문서는 그 배열을 사람이 읽기 좋게 펼친 것이며, 불일치가 있으면 코드가 우선한다(`python cb_valuation/step1_curve/graph/export_spec.py` 로 재생성). `python cb_valuation/step1_curve/graph/graph_check.py` 가 불변식·두 갈래 시나리오·노드 쓰기 추적·상수 지문 결정성을 검사한다.
 
@@ -12,8 +12,8 @@
 | 1 | `record_provenance` | 출처 기록 | `provenance` | provenance.*: data/raw 사본, date_lag_days=(valuation−curve).days, 행 캡처(Q12), 등급 캡처(Q13), instrument, method_choice(사용자가 고른 프로필·chosen_by; interp_method/space 는 C 에서 복사), PROVENANCE_REQUIRED_FIELDS 완전성. |
 | 2 | `interpret_labels` | 행 라벨 해석(AI 허용) | `labels` | labels.*: LABEL_GRAMMAR 정규식(기본); parsed 항목 {row_index, kind, rating, block, parser}, rf/rd_candidates 는 parsed 부분집합, unparsed_rows=[row_index]. AI_ENABLED 시 미매칭 행 라벨 문자열만 LLM 에 제안 요청 → 재검증 통과 시 parser='llm'. 숫자 필드 쓰기 금지. |
 | 3 | `approve_input` | 입력 승인(필수) | `approval_input` | approval_input.requested_at·snapshot_sha256·flags_seen 만 처음 한 번 기록(멱등). 결정 필드는 set_decision() 전용. |
-| 4 | `select_rows` | 행 선택 | `rows` | rows.*: RF=국고채, RD=회사채+등급(노칭)+블록(BLOCK_FALLBACK), 전기 등급·블록 일관성, ytm_pct×PCT_TO_DEC → ytm RateVector(basis nominal_m{RF_FREQ}/nominal_m{RD_FREQ} ∈ BASIS), knot_tenors=C.knot_tenors(curve), missing_knots. |
-| 5 | `build_grid` | 격자 생성 | `grid` | grid.*: knots(≤horizon), boot_times(1/m 격자), remaining_years(DAYCOUNT), tree(N,T,dt,event_times). |
+| 4 | `select_rows` | 행 선택 | `rows` | rows.*: RF/RD 행 = provenance.row_choice(사용자 드롭다운 선택; 앱 기본) 또는 상품 정보(등급+BLOCK_OF_ISSUANCE, BLOCK_FALLBACK 대체 시 사실 기록), 전기 등급·블록 일관성, ytm_pct×PCT_TO_DEC → ytm RateVector(basis nominal_m{RF_FREQ}/nominal_m{RD_FREQ} ∈ BASIS), knot_tenors=C.knot_tenors(curve), missing_knots. |
+| 5 | `build_grid` | 격자 생성 | `grid` | grid.*: knots(≤horizon), boot_times(1/m 격자), 산출 격자 = provenance.grid_settings(step∈STEP_MODES, horizon_years=T → N=T/dt; 앱 기본) 또는 상품 만기(TREE_GRID·DAYCOUNT), remaining_years=T, maturity_years(만기일 있을 때만), tree(N,T,dt,event_times). |
 | 6 | `interpolate` | 보간 | `interp` | interp.*: method(트리 격자용 INTERP_METHOD)·method_pre(이표격자용 INTERP_METHOD_PRE) 기록, 모드 A 면 이표격자 YTM(ytm_on_coupon_grid) → c_n(COUPON_CONV, par_coupon_on_grid), knot 왕복 검사, 외삽 사용 기록. |
 | 7 | `bootstrap` | 부트스트랩(RF·RD) | `bootstrap` | bootstrap.*: 모드 A DF_n=(1−c_nΣDF)/(1+c_n) (BOOT!H/I 동치) / 모드 B knot brent + 중간 이표일 보간(+Gauss-Seidel), df_valid, solver_log. |
 | 8 | `verify_par` | 파 검증(핵심 게이트) | `par_check` | par_check.*: 모든 만기 Σ c·DF + DF_n − 목표가격 (RF/RD), max_abs_err, 미사용 knot 잔차 INFO. |
@@ -21,8 +21,8 @@
 | 10 | `map_tree_grid` | 트리 격자 매핑 | `tree` | tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid(표시용, INTERP_METHOD_PRE). |
 | 11 | `compute_forward` | 선도금리 산출 | `fwd` | fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=(1+f)^(−dt) [① XL BM F열], F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1). |
 | 12 | `verify_fwd_spot` | 선도-현물 정합(Q11) | `fwd_spot_check` | fwd_spot_check.*: \|Σ_{k≤i}(−f_k dt_k) − ln DF_spot(t_i)\| 로그 공간 게이트 + ΠDF−DF 절대차 + Q11 예시. |
-| 13 | `run_sensitivity` | 민감도 분석 | `sensitivity` | sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_KBI 면 excel_recon. |
-| 14 | `compute_headline` | 헤드라인 산출 | `headline` | headline.*: HEADLINE_RULE 잔여만기 YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None). |
+| 13 | `run_sensitivity` | 민감도 분석 | `sensitivity` | sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_REF 면 excel_recon. |
+| 14 | `compute_headline` | 헤드라인 산출 | `headline` | headline.*: HEADLINE_RULE 잔여만기(grid.maturity_years) YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None). 만기일 없는 커브 전용 실행에서는 후보 없음·None. |
 | 15 | `sanity_check` | 건전성 점검·집계 | `sanity` | sanity.*: 심각도 코드 집계의 유일 지점. 전용 엣지가 처리한 FAIL 은 재평가하지 않는다. sanity.fail = 다중 노드 교차 규칙(INTERP_MISMATCH). |
 | 16 | `approve_exception` | 예외 승인(조건부) | `approval_exception` | approval_exception.requested_at·snapshot_sha256·flags_seen 만 처음 한 번 기록(멱등). 결정 필드는 set_decision() 전용. |
 | 17 | `approve_curve` | 최종 커브 승인(필수) | `approval_curve` | approval_curve.requested_at·snapshot_sha256·flags_seen 만 처음 한 번 기록(멱등). 결정 필드는 set_decision() 전용. |
@@ -213,7 +213,7 @@ flowchart TD
 | E01 | 헤더 불일치 | DEFAULT | 헤더불일치 | failed |
 | E02 | 파싱 오류 | DEFAULT | 파싱오류 | failed |
 | E03 | 행 0개 | DEFAULT | 행없음 | failed |
-| E04 | 출처 불완전(만기일 없음) | DEFAULT | 출처불완전 | failed |
+| E04 | 출처 불완전(노드 간격 미선택) | DEFAULT | 출처불완전 | failed |
 | E05 | curve_date 지연 5일 | DEFAULT | 기준일역전_또는_지연초과 | failed |
 | E06 | curve_date 가 평가기준일보다 미래(lag −1) | DEFAULT | 기준일역전_또는_지연초과 | failed |
 | E07 | curve_date 지연 1일 → DATE_LAG 승인 후 done | DEFAULT | 내보내기완료 | done |
@@ -374,7 +374,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | PCHIP_TREE | DEFAULT 와 같은 부트스트랩, 트리 격자 보간만 PCHIP(g=r_c·t, log_df) — 선도곡선 연속·음의 선도 방지(보간법 변경 공시 필요) |
 | KICPA_1130 | 모드 B(공시 마디 미지수 근찾기 + 중간 이표일 보간) + 관행적 가격 — 한국공인회계사회 실무사례 1130 준용 |
 | REVIEWER_2024 | RF·RD 분기 부트스트랩, 주간 격자, 분기 계단 선도, 이산 할인 — 2024 내부 검토자 패키지 재현(대조 전용) |
-| EXCEL_KBI | 엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지 |
+| EXCEL_REF | 엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지 |
 
 필수 증빙 항목(전항목이 `export.cell_map` 에 `<file>!<sheet|->!<range|json_path>` 로 있어야 done 도달): Q1, Q8, Q9_FWD_INPUT, Q10_1, Q10_2, Q11, Q12, Q13, C33, C34, C35, C36, C37, C38, C39, C40, C41, C43, C44, C48, HEADLINE_RF, HEADLINE_RD, HEADLINE_RATING, HEADLINE_BLOCK, KICPA_INTERP_DISCLOSURE, RUN_PATH, APPROVALS
 
@@ -405,12 +405,12 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `INTERP_SPACE_GRID` | `"spot_annual"` | BM MF_INTERPOL 이 BOOT!M(연복리 spot) 선형보간 = 한공회 변형① ; 대안 spot_continuous(②), log_df(④), ytm(③ 재현) |
 | `PCHIP_RECOMMENDED_SPACE` | `"log_df"` | 카탈로그 §3: PCHIP 은 g=r_c·t 대상일 때 선도 양수·연속 보장 (PCHIP_TREE 프로필이 명시 지정) |
 | `INTERP_TABLE` | `{` | method_id: (is_local, include) — INTERPOLATION_METHODS §1 (include: must\|recommended\|compare_only\|deferred_step2) |
-| `EXTRAP_LEFT` | `"flat"` | spot 공간: 현물 평탄(=선도 r_1 상수, 검토자 weeks1-13) ; log_df 공간: (0,0) 마디 포함 정규 구간 ; "origin_anchored" = VBA MF_INTERPOL Case1 (EXCEL_KBI 전용) |
-| `EXTRAP_RIGHT` | `"flat_forward"` | g(t)=g_n+g'(t_n−)(t−t_n) (카탈로그 §5) \| "flat_spot"(Hagan-West) \| "excel_zero"(VBA Empty→0, EXCEL_KBI 전용; 정상 모드 발동 시 FAIL) |
+| `EXTRAP_LEFT` | `"flat"` | spot 공간: 현물 평탄(=선도 r_1 상수, 검토자 weeks1-13) ; log_df 공간: (0,0) 마디 포함 정규 구간 ; "origin_anchored" = VBA MF_INTERPOL Case1 (EXCEL_REF 전용) |
+| `EXTRAP_RIGHT` | `"flat_forward"` | g(t)=g_n+g'(t_n−)(t−t_n) (카탈로그 §5) \| "flat_spot"(Hagan-West) \| "excel_zero"(VBA Empty→0, EXCEL_REF 전용; 정상 모드 발동 시 FAIL) |
 | `EXTRAP_LEFT_FLAT_SEVERITY` | `"WARN"` | 트리 첫 스텝(t<첫 knot)은 구조적으로 항상 해당 → WARN ; "APPROVAL_REQUIRED" 로 되돌릴 수 있음(사용자 결정 2026-09-07: WARN 확정) |
 | `CURVE_HORIZON_Y` | `10.0` | BOOT!E29/T49 ; KICPA_1130 프로필 50 |
-| `RF_SEED_3M` | `"none"` | \| "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_KBI 전용) |
-| `RF_REGRID_RULE` | `"interp"` | \| "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_KBI 전용) |
+| `RF_SEED_3M` | `"none"` | \| "excel_ytm_half" (BOOT!L10 = C10/2, EXCEL_REF 전용) |
+| `RF_REGRID_RULE` | `"interp"` | \| "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_REF 전용) |
 | `MIN_KNOTS` | `4` | PCHIP 끝점 3점식 요건 + 여유 (열린 결정) |
 | `SENSITIVITY_COMBOS` | `[("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_ann` | 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단 |
 | `PROFILES_IMPLEMENTED` | `("DEFAULT", "PCHIP_TREE")` | 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화 |
@@ -423,6 +423,9 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `BP_PER_UNIT` | `1e4` | 단위 환산(bp, 증빙 WEEKS 행) |
 | `BLOCK_FALLBACK` | `{"사모무보증": "공모무보증", "공모무보증": "사모무보증"}` | 요청 블록 결측 시 대체 (감사인 Q13 회신 2025-02-04: 사모 미고시 → 공모 사용) ; 대체 사용 → ROW_FALLBACK 승인 |
 | `DAYCOUNT` | `"ACT/365"` | 보고서 T=1633/365 ; "30/360" = 워크시트 함수 YEARFRAC(MAIN_주가!B7,MAIN_주가!B6,0) (XL DATA!A4=3.475, dT=DATA!C4=A4/B4, BM!C3=DATA!$C$4) |
+| `STEP_MODES` | `{"monthly": 1.0 / 12.0, "weekly": 1.0 / 52.0, "daily": 1.0 / 365.0}` | 앱 노드 간격(월간/주간/일간) → dt(년, 달력 기준; 영업일 격자는 열린 결정) ; provenance.grid_settings.step |
+| `STEP_LABELS` | `{"monthly": "월간", "weekly": "주간", "daily": "일간"}` | 화면 표시 |
+| `AGENCIES` | `("KIS", "KAP", "NICE", "FN", "EG")` | 채권평가사 코드(KIS자산평가·한국자산평가·나이스피앤아이·에프앤자산평가·이지자산평가) — 화면 드롭다운 |
 | `TREE_GRID` | `{"mode": "report", "N": 234, "dt_weekly": 1.0 / 52.0}` | report: N 고정(보고서 234) \| weekly: dt=1/52(검토자) \| excel: N 고정 (XL DATA!B4=181) |
 | `TREE_FWD_RULE` | `"continuous_from_spot"` | BM C-FWD ; \| "piecewise_quarter_step" (검토자 Rf_dc 분기 이산선도→주간) |
 | `NODE_DISCOUNT_CONV` | `"3_continuous_fwd"` | 감사인 Q8 ③ exp(−f·dt) = XL BM row9, 한공회 §3.7.4.1 ; ① "1_discrete_fwd"(검토자 Check list!E34), ② "2_quarterly_fwd" |
@@ -447,7 +450,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `FWD_JUMP_WARN_BP` | `100.0` | 인접 스텝 연속선도 점프 (검토자 수용 톱니 RF 35bp/RD 250bp — 열린 결정) |
 | `RD_MIN_SPREAD` | `0.0` | RD_spot − RF_spot < 0 → RD_LT_RF 승인 |
 | `CURVE_DATE_MAX_LAG_DAYS` | `3` | 2024-12-31 휴장 vs 12-30 고시 (사용자 결정 2026-09-07: 3일) ; lag<0 또는 >3 → FAIL, 0<lag≤3 → DATE_LAG 승인 |
-| `HEADLINE_RULE` | `"interp_linear_ytm"` | 검토자 Check list!E44 직선보간 (사용자 결정 2026-09-07 확정) ; \| "ceil_tenor" (EXCEL_KBI: stale 5Y knot 2.765/11.854, T∈(4,5] 기준) |
+| `HEADLINE_RULE` | `"interp_linear_ytm"` | 검토자 Check list!E44 직선보간 (사용자 결정 2026-09-07 확정) ; \| "ceil_tenor" (EXCEL_REF: stale 5Y knot 2.765/11.854, T∈(4,5] 기준) |
 | `HEADLINE_DEFS` | `["interp_linear_ytm", "ceil_tenor", "nearest_tenor", "spot_annual_at_T", "spot_cont_at_T"]` | 진단표 전용 |
 | `HEADLINE_ROUND_DIGITS` | `3` | 사용자 결정 2026-09-07: 보고서 표기(2.765/11.854)와 같은 % 소수 3자리 ROUND_HALF_UP 비교 |
 | `PAR_FACE` | `10000` | 검토자 PV OF BOND 10000 |
@@ -456,7 +459,8 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `BASIS` | `("nominal_m2", "nominal_m4", "per_period_m2", "per_period_m4", "annual_eff", "continuous",` | 한공회 §3.7.4.4 |
 | `LABEL_GRAMMAR` | `{"RF": r"^\s*국고채", "RD": r"회사채\s*(AAA\|AA[+\-0]?\|A[+\-0]?\|BBB[+\-0]?\|BB[+\-0]?\|B[+\-0]` |  |
 | `PROVENANCE_REQUIRED_FIELDS` | `("source_agency", "curve_date", "valuation_date", "file_sha256", "raw_copy_path", "downloa` |  |
-| `PROVENANCE_APPROVAL_FIELDS` | `("capture_path", "instrument.rating_evidence.capture_path")` | 감사인 Q12-2·Q13-1 캡처 ; 누락 → CAPTURE_MISSING 승인 |
+| `PROVENANCE_APPROVAL_FIELDS` | `("capture_path",)` | 감사인 Q12-2 사용 행 캡처(이미지/PDF) ; 누락 → CAPTURE_MISSING 승인 |
+| `PROVENANCE_APPROVAL_FIELDS_PRODUCT` | `("instrument.rating_evidence.capture_path",)` | 감사인 Q13-1 등급 캡처 — 상품(등급) 정보가 입력된 경우에만 요구 |
 | `HUMAN_NODES` | `("approve_input", "approve_exception", "approve_curve")` |  |
 | `TERMINAL_NODES` | `("done", "fail", "wait_for_human")` |  |
 | `HUMAN_EDGE_ORDER` | `{` | graph_check 가 이름 시퀀스 완전 일치를 검사 |
@@ -471,5 +475,5 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `XLSX_DC_STYLE` | `{"label_col": "B", "first_data_col": "C", "freeze_panes": "E1", "width_label": 18.7, "widt` |  |
 | `XLSX_DC_BLOCKS` | `[` | (블록 제목, [(행 라벨, 원천 state 접두사, 숫자 서식)]) — 열 = 마디(블록 1·3) 또는 격자 스텝(블록 2·4) ; 라벨·서식은 REV Rf_dc r3~r38 원문({…} 커브별 치환: rate=RISK FREE RATE\|RISKY RATE, period=HALF-YEAR\|QUARTER) |
 | `XLSX_COLUMNS` | `{"PAR_CHECK": ["curve", "t", "n", "price", "target", "residual", "residual_x_face"],` | 검토자 MODEL CHECK |
-| `PROFILES` | `{` | 상수 오버라이드 dict 일 뿐 판단 로직 없음. fixture 매핑: A=DEFAULT, B=EXCEL_KBI, C=REVIEWER_2024, D=KICPA_1130, PCHIP_TREE=A 입력 재사용 |
+| `PROFILES` | `{` | 상수 오버라이드 dict 일 뿐 판단 로직 없음. fixture 매핑: A=DEFAULT, B=EXCEL_REF, C=REVIEWER_2024, D=KICPA_1130, PCHIP_TREE=A 입력 재사용 |
 | `NODES_` | `nodes or NODES` |  |

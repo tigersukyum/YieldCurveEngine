@@ -86,6 +86,6 @@
 4. **Q13 사모 미고시 → 공모 준용**: BLOCK_FALLBACK 규칙의 출처. 대체 사용 시 ROW_FALLBACK 승인, 전기 블록과 다르면 BLOCK_CHANGED 승인.
 5. **`df_step_alt` 열 부재**: XLSX_DC_BLOCKS 블록 4(Rf_dc/Rd_dc) 에 이산 1/(1+F) 할인계수 열이 없다(state `fwd.df_step_alt` 에는 있음). C34·Q8 병기를 시트에서 직접 보이려면 열 추가가 필요 — 열린 결정.
 6. **Q1 트리 시트 요구**: 노드별 데이터 시트 제출 요구는 2단계 산출물이지만 STEP2_EVIDENCE_ITEMS 에 대응 키가 없다 — 열린 결정.
-7. **헤드라인 재현 불가**: 참조 모형(KBI) 2024-12-31 헤드라인은 검토자 매트릭스의 직선보간(HEADLINE_RULE 기본)으로 재현되지 않는다(`tests/fixtures/README.md`: stale BOOT 5Y knot; 대안 ceil_tenor 는 EXCEL_KBI 프로필 전용). HEADLINE_MISMATCH 승인 경로가 이를 다룬다.
+7. **헤드라인 재현 불가**: 참조 모형(KBI) 2024-12-31 헤드라인은 검토자 매트릭스의 직선보간(HEADLINE_RULE 기본)으로 재현되지 않는다(`tests/fixtures/README.md`: stale BOOT 5Y knot; 대안 ceil_tenor 는 EXCEL_REF 프로필 전용). HEADLINE_MISMATCH 승인 경로가 이를 다룬다.
 8. **Q11 회신 위치**(현물이자율 Tab H,I열 4행)는 평가인 워킹파일 안의 위치이며 여기서는 추출하지 않았다. 검토자 측 대조값은 fixture C 에 있다(본 문서 §2 Q11 행).
 9. 질의서 H~K 열(2차·3차 질의/회신)은 비어 있다. Check list D열은 C33~C48 전항목 'Yes' 이다.

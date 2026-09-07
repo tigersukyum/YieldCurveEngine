@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<title>CB 이자율 커브 엔진 — 1단계</title>
+<title>이자율 커브 엔진 — 1단계</title>
 <style>
   :root { --ok:#2f855a; --cur:#2b6cb0; --bad:#c53030; --warn:#b7791f; --line:#cbd5e0; }
   body { font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; margin:0; height:100vh; display:grid; grid-template-rows:46px 1fr; grid-template-columns:minmax(0,1fr) 560px; color:#1a202c; background:#fff; }
@@ -18,19 +18,25 @@
   .panel { display:none; } .panel.active { display:block; }
   table { border-collapse:collapse; font-size:12px; margin:4px 0 10px; }
   th, td { border:1px solid #e2e8f0; padding:2px 6px; text-align:right; white-space:nowrap; }
-  th { background:#f1f5f9; } td.l, th.l { text-align:left; }
-  h3 { font-size:14px; margin:12px 0 4px; } h4 { font-size:13px; margin:8px 0 2px; color:#4a5568; }
+  th { background:#f1f5f9; position:sticky; top:0; } td.l, th.l { text-align:left; }
+  .scroll { overflow:auto; max-height:420px; border:1px solid #e2e8f0; margin-bottom:10px; }
+  h3 { font-size:14px; margin:14px 0 4px; } h4 { font-size:13px; margin:8px 0 2px; color:#4a5568; }
   label { display:block; font-size:12px; margin:4px 0 1px; color:#4a5568; }
   input, select, textarea { font-size:12px; padding:3px 5px; border:1px solid var(--line); border-radius:3px; width:100%; box-sizing:border-box; }
-  textarea { font-family:Consolas, monospace; height:150px; }
+  textarea { font-family:Consolas, monospace; height:140px; }
   .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; }
   .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px 12px; }
   button.primary { background:#2b6cb0; color:#fff; border:0; padding:7px 16px; border-radius:4px; cursor:pointer; margin-top:8px; }
   button.danger { background:#c53030; color:#fff; border:0; padding:7px 16px; border-radius:4px; cursor:pointer; margin-top:8px; }
-  button.ghost { background:#fff; border:1px solid var(--line); padding:6px 12px; border-radius:4px; cursor:pointer; margin-top:8px; }
+  button.ghost { background:#fff; border:1px solid var(--line); padding:6px 12px; border-radius:4px; cursor:pointer; margin-top:6px; }
   .err { color:var(--bad); white-space:pre-wrap; font-size:12px; margin:6px 0; }
   .note { font-size:12px; color:#4a5568; }
+  .help { font-size:11px; color:#718096; margin:0 0 4px; }
   pre { font-size:11px; background:#f7fafc; padding:8px; overflow:auto; max-height:70vh; }
+  .drop { border:2px dashed #a0aec0; border-radius:6px; padding:16px; text-align:center; color:#4a5568; background:#f7fafc; margin:6px 0; }
+  .drop.over { border-color:var(--cur); background:#ebf8ff; }
+  .drop .link { color:var(--cur); text-decoration:underline; cursor:pointer; }
+  .ok { color:var(--ok); } .warnc { color:var(--warn); }
   svg text { font-size:11px; }
   .node rect { fill:#fff; stroke:#a0aec0; stroke-width:1.2; }
   .node.human rect { rx:16; ry:16; stroke:#805ad5; }
@@ -49,11 +55,13 @@
   #pathlist { font-size:11px; margin-top:6px; }
   #pathlist li { margin:1px 0; }
   .sev-FAIL { color:var(--bad); font-weight:bold; } .sev-APPROVAL_REQUIRED { color:var(--warn); font-weight:bold; } .sev-WARN { color:#4a5568; }
+  .curvetabs button { margin-right:4px; }
+  .curvetabs button.active { background:#2f855a; color:#fff; border-color:#2f855a; }
 </style>
 </head>
 <body>
 <header>
-  <b>CB 이자율 커브 엔진 — 1단계 (YTM → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙)</b>
+  <b>이자율 커브 엔진 — 1단계 (YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙)</b>
   <span id="b-profile" class="badge">프로필: —</span>
   <span id="b-status" class="badge">상태: 대기</span>
   <span id="b-node" class="badge">현재 노드: —</span>
@@ -70,35 +78,33 @@
   </div>
 
   <div id="tab-input" class="panel active">
-    <div class="note">보간법·프로필은 <b>실행 시 사용자가 선택</b>합니다(기본값 없음). 선택은 provenance 에 기록되어 입력 승인 화면에 표시됩니다. 금리표는 이 PC 밖으로 나가지 않습니다(127.0.0.1 전용).</div>
-    <div class="grid2">
-      <div><label>프로필 (필수)</label><select id="f-profile"><option value="">— 선택 —</option></select></div>
-      <div><label>커브 세트 id</label><input id="f-curve_set_id" value="CB1"></div>
-      <div><label>평가기준일 (valuation_date)</label><input id="f-valuation_date" placeholder="YYYY-MM-DD"></div>
-      <div><label>커브 고시일 (curve_date; 비우면 평가기준일)</label><input id="f-curve_date" placeholder="YYYY-MM-DD"></div>
-      <div><label>담당자 (operator = 프로필 선택자)</label><input id="f-operator"></div>
-      <div><label>평가사 (source_agency)</label><input id="f-source_agency" value="KIS"></div>
-      <div><label>행 캡처 파일 경로 (Q12; 비우면 CAPTURE_MISSING 승인)</label><input id="f-capture_path"></div>
-      <div><label>등급 캡처 파일 경로 (Q13-1)</label><input id="f-rating_capture_path"></div>
-    </div>
-    <h4>상품</h4>
+    <h3>① YTM 매트릭스 (채권평가사 시가평가 기준수익률 표)</h3>
+    <div class="help">파일 형식: 평가사 사이트에서 내려받은 xlsx/xlsm(첫 시트 또는 'KIS-NET' 시트) 또는 CSV/TSV/TXT. 첫 행 = 종류,구분,적용대상채권,3M,6M,…,50Y — 결측은 '-'. 금리표는 이 PC 밖으로 나가지 않습니다(127.0.0.1 전용).</div>
+    <div id="drop" class="drop">파일을 여기에 끌어다 놓거나 <span class="link" id="pick">파일 선택</span> <input type="file" id="f-file" accept=".csv,.tsv,.txt,.xlsx,.xlsm" hidden>
+      &nbsp;·&nbsp; <span class="link" id="btn-fixture">연습 데이터 불러오기</span> &nbsp;·&nbsp; <span class="link" id="btn-paste">직접 붙여넣기</span></div>
+    <div id="paste-box" hidden><textarea id="f-matrix_text" placeholder="종류,구분,적용대상채권,3M,6M,9M,1Y,1.5Y,2Y,2.5Y,3Y,4Y,5Y,7Y,10Y,15Y,20Y,30Y,50Y&#10;,국고채권,국고채,2.422,…"></textarea><button class="ghost" id="btn-parse">붙여넣은 표 읽기</button></div>
+    <div id="matrix-info" class="note">아직 매트릭스가 없습니다.</div>
+
+    <h3>② 커브 설정</h3>
     <div class="grid3">
-      <div><label>만기일</label><input id="f-maturity_date" placeholder="YYYY-MM-DD"></div>
-      <div><label>발행형태</label><select id="f-issuance_type"><option value="사모">사모</option><option value="공모">공모</option></select></div>
-      <div><label>신용등급 (예: BB+)</label><input id="f-rating"></div>
-      <div><label>발행사</label><input id="f-issuer"></div>
-      <div><label>사채명</label><input id="f-cb_name"></div>
-      <div><label>전기 적용 등급 (없으면 비움)</label><input id="f-prior_rating_basis"></div>
-      <div><label>전기 적용 블록 (공모무보증/사모무보증)</label><input id="f-prior_block_basis"></div>
-      <div><label>보고서 헤드라인 RF % (선택)</label><input id="f-reported_rf_pct"></div>
-      <div><label>보고서 헤드라인 RD % (선택)</label><input id="f-reported_rd_pct"></div>
+      <div><label>프로필 (보간법·관례 묶음, 필수)</label><select id="f-profile"><option value="">— 선택 —</option></select></div>
+      <div><label>노드 간격</label><select id="f-step"></select><div class="help">산출 격자 dt: 월간 1/12년 · 주간 1/52년 · 일간 1/365년(달력일)</div></div>
+      <div><label>산출 기간 (년)</label><input id="f-horizon" type="number" step="0.5" min="0.5"><div class="help">최대 = CURVE_HORIZON_Y(부트스트랩 마지막 마디)</div></div>
+      <div><label>무위험(RF) 행</label><select id="f-rf"></select></div>
+      <div><label>위험(RD) 행</label><select id="f-rd"></select></div>
+      <div><label>커브 세트 id (산출물 폴더 이름)</label><input id="f-curve_set_id" value="CURVE1"></div>
+      <div><label>평가기준일</label><input id="f-valuation_date" type="date"></div>
+      <div><label>커브 고시일 (비우면 평가기준일)</label><input id="f-curve_date" type="date"><div class="help">고시일이 평가기준일보다 앞서면 승인(DATE_LAG), CURVE_DATE_MAX_LAG_DAYS 초과면 실패</div></div>
+      <div><label>평가사</label><select id="f-source_agency"></select></div>
+      <div><label>담당자 (프로필 선택자로 기록)</label><select id="f-operator"></select><input id="f-operator_text" placeholder="이름 직접 입력" hidden></div>
     </div>
-    <label>YTM 매트릭스 (KIS-NET 시가평가 기준수익률 표를 CSV/TSV 로 붙여넣기: 종류,구분,적용대상채권,3M,…,50Y — 결측은 '-')</label>
-    <textarea id="f-matrix_text"></textarea>
-    <div>
-      <button class="ghost" id="btn-fixture">연습 데이터 불러오기 (fixture A, 2025-12-31)</button>
-      <button class="primary" id="btn-run">실행 (load_matrix → … → 승인 정지)</button>
-    </div>
+
+    <h3>③ 출처 증빙 (선택)</h3>
+    <div class="help"><b>사용 행 캡처</b> = 평가사 화면에서 이번에 쓰는 행(국고채·회사채 등급 행)이 보이는 화면 캡처(이미지 또는 PDF). 감사인 질의 Q12(YTM 커브 출처 캡처)에 대한 증빙이며, 없으면 승인 단계에서 CAPTURE_MISSING 코드를 확인(ack)하고 진행합니다.</div>
+    <div id="drop-cap" class="drop">캡처 파일을 여기에 끌어다 놓거나 <span class="link" id="pick-cap">파일 선택</span> <input type="file" id="f-capfile" accept="image/*,.pdf" hidden></div>
+    <div id="cap-info" class="note">캡처 없음</div>
+
+    <div><button class="primary" id="btn-run">실행 (매트릭스 적재 → 입력 승인 정지)</button></div>
     <div id="run-error" class="err"></div>
   </div>
 
@@ -117,17 +123,25 @@
 </div>
 
 <script>
-let GRAPH = null, STATE = null, SUMMARY = null, LAYOUT = null;
+let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
 const num = (x, d = 6) => (x == null) ? "—" : (typeof x === "number" ? (Math.abs(x) < 1e-4 && x !== 0 ? x.toExponential(2) : x.toFixed(d)) : String(x));
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function fmtVal(v, fmt) {  // 엑셀 number_format → 화면 표시(값은 그대로, 표시만)
+  if (v == null) return "—"; if (typeof v !== "number") return esc(v);
+  if (fmt.includes("E+")) return v.toExponential(2);
+  if (fmt.endsWith("%")) { const d = (fmt.split(".")[1] || "").replace(/%/g, "").length; return (v * 100).toFixed(d) + "%"; }
+  const d = (fmt.split(".")[1] || "").replace(/[^0]/g, "").length;
+  return fmt.startsWith("#,##") ? v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }) : v.toFixed(d);
+}
 
 // ---------- 탭
-document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => {
-  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x === b));
-  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + b.dataset.tab));
-});
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+function showTab(name) {
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + name));
+}
 
 // ---------- 그래프 배치 (EDGES 만 읽어 그린다)
 function buildLayout(g) {
@@ -144,7 +158,6 @@ function buildLayout(g) {
   pos["done"] = { x: x0, y: yLast + gap, w: W, h: Hh };
   return { pos, chain, order: chain.concat(["done"]) };
 }
-
 function edgePath(e, L, k, kn) {
   const a = L.pos[e.from], b = L.pos[e.to];
   const off = (k - (kn - 1) / 2) * 8;
@@ -155,7 +168,6 @@ function edgePath(e, L, k, kn) {
   const xr = a.x + a.w, bulge = xr + 26 + Math.abs(ib - ia) * 8;
   return { d: `M${xr},${a.y + a.h / 2 + off} C${bulge},${a.y + a.h / 2 + off} ${bulge},${b.y + b.h / 2} ${b.x + b.w},${b.y + b.h / 2}`, lx: bulge - 4, ly: (a.y + b.y) / 2 + 12, anchor: "start" };
 }
-
 function renderGraph() {
   if (!GRAPH) return;
   const L = LAYOUT || (LAYOUT = buildLayout(GRAPH));
@@ -169,7 +181,7 @@ function renderGraph() {
   <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c53030"/></marker>
   <marker id="ary" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b7791f"/></marker></defs>`;
   const byFrom = {};
-  GRAPH.edges.forEach(e => { (byFrom[e.from] ||= {}); const key = e.to; (byFrom[e.from][key] ||= []).push(e); });
+  GRAPH.edges.forEach(e => { (byFrom[e.from] ||= {}); (byFrom[e.from][e.to] ||= []).push(e); });
   const plain = [], strong = [];
   GRAPH.edges.forEach(e => {
     const sib = byFrom[e.from][e.to]; const k = sib.indexOf(e), kn = sib.length;
@@ -202,7 +214,7 @@ function renderGraph() {
   $("pathlist").innerHTML = (STATE?.run?.path || []).map(p => `<li>${esc(p[0])} —<b>${esc(p[1])}</b>→ ${esc(p[2])} <span class="note">(${esc(String(p[3]).slice(0, 19))}, 재개 ${p[4]})</span></li>`).join("");
 }
 
-// ---------- 좌측 패널
+// ---------- 표 헬퍼
 function table(header, rows, leftCols = 1) {
   return `<table><tr>${header.map((h, i) => `<th class="${i < leftCols ? "l" : ""}">${esc(h)}</th>`).join("")}</tr>` +
     rows.map(r => `<tr>${r.map((c, i) => `<td class="${i < leftCols ? "l" : ""}">${c}</td>`).join("")}</tr>`).join("") + `</table>`;
@@ -212,47 +224,125 @@ function flagsTable(list) {
   return table(["심각도", "코드", "커브", "값", "임계(상수)", "상세"], list.map(f => [`<span class="sev-${f.severity}">${esc(f.severity)}</span>`, esc(f.code), esc(f.curve ?? ""), esc(JSON.stringify(f.value ?? "")).slice(0, 60), esc(f.threshold ?? ""), esc(f.detail ?? "")]), 6);
 }
 
-function renderResult() {
+// ---------- 입력: 매트릭스 업로드·미리보기·행 드롭다운
+function setPreview(text, pv, sourceNote) {
+  MATRIX_TEXT = text; PREVIEW = pv;
+  const bad = !pv.header_ok || pv.parse_errors.length;
+  $("matrix-info").innerHTML = `<span class="${bad ? "warnc" : "ok"}">${esc(sourceNote)} — ${pv.n_rows}행, 헤더 ${pv.header_ok ? "일치" : "불일치(첫 행이 종류,구분,적용대상채권,3M…50Y 인지 확인)"}, 파싱 오류 ${pv.parse_errors.length}건, RF 후보 ${pv.rf_candidates.length}, RD 후보 ${pv.rd_candidates.length}</span>` +
+    (pv.parse_errors.length ? `<div class="err">${esc(pv.parse_errors.slice(0, 5).join("\n"))}</div>` : "");
+  const rowLabel = r => `${r.row_index}행 · ${[r.kind_raw, r.group_raw, r.label].filter(Boolean).join(" / ")}${r.block ? " [" + r.block + "]" : ""}${r.rating ? " " + r.rating : ""} (값 ${r.n_values}개)`;
+  const fill = (sel, preferred, first) => {
+    sel.innerHTML = "";
+    const pref = new Set(preferred);
+    const ordered = pv.rows.filter(r => pref.has(r.row_index)).concat(pv.rows.filter(r => !pref.has(r.row_index)));
+    ordered.forEach(r => { const o = document.createElement("option"); o.value = r.row_index; o.textContent = (pref.has(r.row_index) ? "★ " : "") + rowLabel(r); sel.appendChild(o); });
+    if (first != null) sel.value = String(first);
+  };
+  fill($("f-rf"), pv.rf_candidates, pv.rf_candidates[0]);
+  fill($("f-rd"), pv.rd_candidates, pv.rd_candidates.find(i => pv.rows.find(r => r.row_index === i)?.rating === "BB+") ?? pv.rd_candidates[0]);
+}
+async function uploadFile(file, kind) {
+  const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result.split(",")[1]); fr.onerror = rej; fr.readAsDataURL(file); });
+  const r = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind, name: file.name, content_b64: b64 }) });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || "업로드 실패");
+  return j;
+}
+async function onMatrixFile(file) {
+  $("run-error").textContent = "";
+  try { const j = await uploadFile(file, "matrix"); $("f-matrix_text").value = j.matrix_text; setPreview(j.matrix_text, j.preview, "파일 " + file.name); }
+  catch (e) { $("matrix-info").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+async function onCaptureFile(file) {
+  try { const j = await uploadFile(file, "capture"); CAPTURE_PATH = j.capture_path; $("cap-info").innerHTML = `<span class="ok">캡처 저장: ${esc(j.capture_path)} (${j.bytes} bytes)</span>`; }
+  catch (e) { $("cap-info").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
+}
+function wireDrop(zoneId, inputId, pickId, handler) {
+  const z = $(zoneId), inp = $(inputId);
+  z.addEventListener("dragover", e => { e.preventDefault(); z.classList.add("over"); });
+  z.addEventListener("dragleave", () => z.classList.remove("over"));
+  z.addEventListener("drop", e => { e.preventDefault(); z.classList.remove("over"); if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]); });
+  $(pickId).onclick = () => inp.click();
+  inp.onchange = () => { if (inp.files[0]) handler(inp.files[0]); inp.value = ""; };
+}
+async function parsePasted() {
+  const text = $("f-matrix_text").value;
+  const r = await fetch("/api/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matrix_text: text }) });
+  const j = await r.json(); setPreview(text, j.preview, "붙여넣기");
+}
+async function loadFixture() {
+  const r = await (await fetch("/api/fixture")).json();
+  $("f-matrix_text").value = r.matrix_text; setPreview(r.matrix_text, r.preview, r.note);
+  $("f-valuation_date").value = r.valuation_date; $("f-curve_date").value = r.curve_date; $("f-curve_set_id").value = r.curve_set_id; $("f-source_agency").value = r.source_agency;
+}
+
+// ---------- 실행·승인
+async function api(method, url, body) {
+  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json();
+  if (j.state !== undefined) STATE = j.state;
+  return { ok: r.ok, json: j };
+}
+async function runApp() {
+  $("run-error").textContent = "";
+  const v = id => $(id).value.trim();
+  const operator = $("f-operator").value === "__custom__" ? v("f-operator_text") : $("f-operator").value;
+  const body = { profile: v("f-profile"), matrix_text: MATRIX_TEXT || $("f-matrix_text").value, step: v("f-step"), horizon_years: v("f-horizon"),
+    rf_row_index: v("f-rf"), rd_row_index: v("f-rd"), valuation_date: v("f-valuation_date"), curve_date: v("f-curve_date"), curve_set_id: v("f-curve_set_id"),
+    operator, source_agency: v("f-source_agency"), capture_path: CAPTURE_PATH };
+  if (!body.matrix_text) { $("run-error").textContent = "매트릭스를 먼저 업로드하세요."; return; }
+  const r = await api("POST", "/api/run", body);
+  BLOCKS = null;
+  if (!r.ok) $("run-error").textContent = r.json.error || "오류";
+  await renderAll();
+  if (r.ok) showTab("approve");
+}
+async function decide(decision) {
+  const ack = [...document.querySelectorAll(".ack:checked")].map(x => x.value);
+  const r = await api("POST", "/api/decision", { decision, approver: $("a-approver").value.trim(), comment: $("a-comment").value, ack });
+  BLOCKS = null;
+  await renderAll();
+  if (!r.ok) { const e = $("a-error"); if (e) e.textContent = r.json.error || "오류"; }
+  else if (STATE.run.status === "done") showTab("evidence");
+  else if (STATE.run.status === "failed") showTab("result");
+  else if (STATE.tree?.df_finite) showTab("result");
+}
+async function resumeSnapshot() {
+  const r = await api("POST", "/api/resume", { snapshot_path: $("r-snapshot").value.trim() });
+  BLOCKS = null; await renderAll();
+  if (!r.ok) { const e = $("r-error"); if (e) e.textContent = r.json.error || "오류"; }
+}
+
+// ---------- 결과(검토자 Rf_dc/Rd_dc 형식 4블록)
+async function renderResult() {
   const s = STATE; const el = $("result-body");
-  if (!s) { el.innerHTML = `<div class="note">아직 실행 결과가 없습니다.</div>`; return; }
-  let h = "";
-  h += `<h3>선택 행 (rows)</h3>` + table(["커브", "행", "라벨", "블록", "등급", "대체", "일관성(등급/블록)"],
-    ["RF", "RD"].map(c => { const r = s.rows?.[c.toLowerCase()]; return r ? [c, r.row_index, esc(r.label_raw), esc(r.block ?? "—"), esc(r.rating ?? "—"), esc(s.rows.rd_fallback_reason && c === "RD" ? s.rows.rd_fallback_reason : "—"), `${s.rows.rating_consistency_ok ?? "n/a"} / ${s.rows.block_consistency_ok ?? "n/a"}`] : [c, "—", "(없음)", "", "", "", ""]; }), 3);
-  h += `<h3>사용 마디 (knots · ytm nominal)</h3>` + table(["커브", "테너", "t", "YTM"], ["RF", "RD"].flatMap(c => (s.grid?.knots?.[c] || []).map(k => [c, k.tenor, k.t, pct(k.ytm, 3)])), 2);
-  if (s.bootstrap?.points?.RF?.length) {
-    ["RF", "RD"].forEach(c => {
-      const pts = s.bootstrap.points[c] || [], ann = s.conv?.spot_annual?.[c]?.values || [], cont = s.conv?.spot_cont?.[c]?.values || [], par = s.par_check?.per_maturity?.[c] || [];
-      h += `<h3>부트스트랩 ${c} (모드 ${esc(s.bootstrap.mode)}, ${esc(s.bootstrap.spot_pp[c]?.basis)})</h3>` +
-        table(["n", "t", "c (기간이표율)", "spot 기간", "spot 연복리", "spot 연속복리", "DF", "par 잔차"],
-          pts.map((p, i) => [p.n, p.t, pct(p.c, 4), pct(p.spot_pp, 4), pct(ann[i], 4), pct(cont[i], 4), num(p.df, 8), num(par[i]?.residual, 3)]), 0);
-    });
-    h += `<div class="note">par 잔차 max = ${num(s.par_check.max_abs_err, 3)} (게이트 TOL_PAR_FAIL) · 복리 왕복 max = ${num(s.conv.roundtrip_max_err, 3)}</div>`;
+  if (!s || !s.tree?.df_finite) { el.innerHTML = `<div class="note">${s ? (s.run.status === "failed" ? `<span class="err">실패: ${esc(s.result.fail_reason)} (${esc(s.result.fail_code)})</span>` : "입력 승인 후 계산이 끝나면 결과가 표시됩니다.") : "아직 실행 결과가 없습니다."}</div>`; return; }
+  if (!BLOCKS) { const r = await fetch("/api/blocks"); BLOCKS = r.ok ? await r.json() : null; }
+  const t = s.grid.tree;
+  let h = `<div class="note">격자: ${esc(t.dt_mode)} (N=${t.N}, T=${num(t.T, 4)}년, dt=${num(t.dt?.[0], 6)}) · 보간 ${esc(s.tree.interp_method_used)}/${esc(s.tree.interp_space_used)} · par 잔차 max ${num(s.par_check.max_abs_err, 3)} · Π DF 로그 잔차 ${num(s.fwd_spot_check.max_abs_err_log, 3)}
+    &nbsp; <a href="/api/export"><button class="primary">엑셀 내려받기 (Rf_dc / Rd_dc 형식)</button></a></div>`;
+  h += `<div class="curvetabs">${["RF", "RD"].map(c => `<button class="ghost ${CURVE_TAB === c ? "active" : ""}" onclick="CURVE_TAB='${c}';renderResult()">${c === "RF" ? "무위험이자율 (RF)" : "위험이자율 (RD)"}</button>`).join("")}</div>`;
+  const c = CURVE_TAB, r = s.rows[c.toLowerCase()];
+  h += `<div class="note">선택 행: ${r ? `${r.row_index}행 ${esc(r.label_raw)}${r.block ? " [" + esc(r.block) + "]" : ""}${r.rating ? " " + esc(r.rating) : ""} (${esc(r.selected_by)})` : "—"}</div>`;
+  if (BLOCKS && BLOCKS[c]) {
+    for (const b of BLOCKS[c]) {
+      h += `<h3>${b.index}. ${esc(b.title)}</h3>`;
+      if (b.index === 1 || b.index === 3) {  // 행 지향(마디·부트스트랩 격자)
+        const n = Math.max(...b.rows.map(x => x.values.length));
+        h += `<div class="scroll"><table><tr><th class="l">항목</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join("")}</tr>` +
+          b.rows.map(x => `<tr><td class="l">${esc(x.label)}</td>${x.values.map(v => `<td>${fmtVal(v, x.fmt)}</td>`).join("")}</tr>`).join("") + `</table></div>`;
+      } else {  // 스텝 지향(격자): 행 = 스텝
+        const n = Math.max(...b.rows.map(x => x.values.length)), LIM = 300;
+        h += `<div class="scroll"><table><tr>${b.rows.map(x => `<th>${esc(x.label)}</th>`).join("")}</tr>` +
+          Array.from({ length: Math.min(n, LIM) }, (_, i) => `<tr>${b.rows.map(x => `<td>${fmtVal(x.values[i], x.fmt)}</td>`).join("")}</tr>`).join("") + `</table></div>` +
+          (n > LIM ? `<div class="help">화면에는 처음 ${LIM}개 스텝만 표시(전체 ${n}개는 엑셀 내려받기)</div>` : "");
+      }
+    }
   }
-  if (s.tree?.df_finite) {
-    const t = s.grid.tree; const N = t.N;
-    h += `<h3>트리 격자 (${esc(t.dt_mode)}: N=${N}, T=${num(t.T, 6)}년, dt=${num(t.dt?.[0], 6)}) · 보간 ${esc(s.tree.interp_method_used)}/${esc(s.tree.interp_space_used)}</h3>`;
-    ["RF", "RD"].forEach(c => {
-      const za = s.tree.spot_annual_on_grid[c].values, zc = s.tree.spot_cont_on_grid[c].values, df = s.tree.df_spot_on_grid[c], f = s.fwd.cont_on_grid[c].values, F = s.fwd.disc_per_step[c].values, ds = s.fwd.df_step[c];
-      const idx = Array.from({ length: N + 1 }, (_, i) => i).filter(i => i <= 3 || i >= N - 2 || i % Math.max(1, Math.floor(N / 8)) === 0);
-      h += `<h4>${c} — 좌측 flat 외삽 스텝 ${s.tree.extrap_left_flat_steps[c].length}개 · 음의 선도 ${s.fwd.negative_count[c]} · 최대 점프 ${num(s.fwd.max_jump_bp[c], 1)}bp</h4>` +
-        table(["step", "t", "D-SPOT[annual_eff]", "C-SPOT[continuous]", "DF", "C-FWD[continuous]", "F_step", "DF_step"],
-          idx.map(i => [i, t.times[i], pct(za[i]), pct(zc[i]), num(df[i], 8), i ? pct(f[i - 1]) : "—", i ? pct(F[i - 1], 5) : "—", i ? num(ds[i - 1], 8) : "—"]), 0);
-    });
-    const sm = s.fwd_spot_check?.sample;
-    if (sm) h += `<h3>Π DF_fwd = DF_spot (감사인 Q11)</h3><div class="note">${esc(sm.curve)} step ${sm.step}, t=${num(sm.t, 6)}: Π df_step = ${num(sm.prod_df_fwd, 12)}, DF_spot = ${num(sm.df_spot, 12)}, 차이(로그) ${num(sm.diff_log, 3)}; 전 격자 max 로그 ${num(s.fwd_spot_check.max_abs_err_log, 3)}</div>`;
-  }
-  if (s.headline?.rule) {
-    h += `<h3>헤드라인 (HEADLINE_RULE = ${esc(s.headline.rule)})</h3>` +
-      table(["정의", "RF %", "RD %"], (s.headline.candidates || []).map(r => [esc(r.def) + (r.def === s.headline.rule ? " ★" : ""), num(r.rf_pct, 4), num(r.rd_pct, 4)]), 1) +
-      `<div class="note">보고서 기재: RF ${s.headline.reported_rf ?? "—"} / RD ${s.headline.reported_rd ?? "—"} → match_ok = ${s.headline.match_ok} · 적용 등급 ${esc(s.headline.rating_applied)} / 블록 ${esc(s.headline.block_applied)}</div>`;
-  }
-  if (s.sanity) {
-    h += `<h3>플래그 (sanity_check 집계)</h3><h4>FAIL</h4>${flagsTable(s.sanity.fail)}<h4>APPROVAL_REQUIRED</h4>${flagsTable(s.sanity.approval_required)}<h4>WARN</h4>${flagsTable(s.sanity.warn)}`;
-  }
-  if (s.sensitivity?.table?.length) {
-    h += `<h3>민감도 (교차 보간법·공간 DF 상대차)</h3>` + table(["방법", "공간", "커브", "max |ΔDF/DF|"], s.sensitivity.table.map(r => [esc(r.method), esc(r.space), r.curve, r.max_rel_df_diff == null ? esc(r.note || "—") : r.max_rel_df_diff.toExponential(3)]), 3) +
-      `<div class="note">주기 민감도: ${esc(JSON.stringify(s.sensitivity.freq_alt))}</div>`;
-  }
+  const sm = s.fwd_spot_check?.sample;
+  if (sm) h += `<h3>Π DF_fwd = DF_spot (감사인 Q11)</h3><div class="note">${esc(sm.curve)} step ${sm.step}, t=${num(sm.t, 6)}: Π df_step = ${num(sm.prod_df_fwd, 12)}, DF_spot = ${num(sm.df_spot, 12)}, 차이(로그) ${num(sm.diff_log, 3)}</div>`;
+  h += `<h3>플래그 (sanity_check 집계)</h3><h4>FAIL</h4>${flagsTable(s.sanity.fail)}<h4>APPROVAL_REQUIRED</h4>${flagsTable(s.sanity.approval_required)}<h4>WARN</h4>${flagsTable(s.sanity.warn)}`;
+  if (s.sensitivity?.table?.length) h += `<h3>민감도 (교차 보간법·공간 DF 상대차)</h3>` + table(["방법", "공간", "커브", "max |ΔDF/DF|"], s.sensitivity.table.map(x => [esc(x.method), esc(x.space), x.curve, x.max_rel_df_diff == null ? esc(x.note || "—") : x.max_rel_df_diff.toExponential(3)]), 3) + `<div class="note">주기 민감도: ${esc(JSON.stringify(s.sensitivity.freq_alt))}</div>`;
   el.innerHTML = h;
 }
 
@@ -260,7 +350,7 @@ function renderApprove() {
   const s = STATE; const el = $("approve-body");
   if (!s || s.run.status !== "paused") {
     el.innerHTML = `<div class="note">정지 중인 승인 노드가 없습니다. (상태: ${esc(s?.run?.status ?? "—")})</div>
-      <h4>저장된 스냅샷에서 재개</h4><div class="note">서버를 다시 켰거나 다른 실행을 한 뒤 정지 중인 승인 건을 이어가려면 스냅샷 경로를 넣으세요(예: state/2025-12-31__CB1/snapshot__approve_input__1.json).</div>
+      <h4>저장된 스냅샷에서 재개</h4><div class="note">서버를 다시 켰거나 다른 실행을 한 뒤 정지 중인 승인 건을 이어가려면 스냅샷 경로를 넣으세요(예: state/2025-12-31__CURVE1/snapshot__approve_input__1.json).</div>
       <input id="r-snapshot" placeholder="state/<평가기준일>__<세트>/snapshot__<node>__<n>.json"><button class="ghost" onclick="resumeSnapshot()">스냅샷 불러오기</button><div id="r-error" class="err"></div>`;
     return;
   }
@@ -268,9 +358,9 @@ function renderApprove() {
   const codes = [...new Set((a.flags_seen || []).map(f => f.code))];
   let h = `<h3>${esc(node)} — 사람 승인 대기</h3><div class="note">요청 시각 ${esc(a.requested_at)} · 스냅샷 sha256 ${esc((a.snapshot_sha256 || "").slice(0, 16))}… · 결정은 set_decision() 으로만 기록됩니다.</div>`;
   if (kind === "input") {
-    const p = s.provenance, mc = p.method_choice;
-    h += `<h4>프로필 선택(사용자)</h4><div class="note">${esc(mc.profile)} — 선택자 ${esc(mc.chosen_by)} · 보간 ${esc(mc.interp_method)} / 공간 ${esc(mc.interp_space_grid)}</div>` +
-      `<h4>출처(provenance)</h4>` + table(["항목", "값"], [["평가사", esc(p.source_agency)], ["고시일 / 평가기준일 / lag", `${esc(p.curve_date)} / ${esc(p.valuation_date)} / ${p.date_lag_days}`], ["파일 sha256", esc(s.input.file_sha256)], ["원본 사본", esc(p.raw_copy_path)], ["다운로드 시각 / 담당자", `${esc(p.downloaded_at)} / ${esc(p.operator)}`], ["행 캡처 / 등급 캡처", `${esc(p.capture_path ?? "없음")} / ${esc(p.instrument.rating_evidence.capture_path ?? "없음")}`], ["상품", `${esc(p.instrument.issuer)} · ${esc(p.instrument.cb_name)} · 만기 ${esc(p.instrument.maturity_date)} · ${esc(p.instrument.issuance_type)} ${esc(p.instrument.rating)}`]], 2) +
+    const p = s.provenance, mc = p.method_choice, gs = p.grid_settings, rc = p.row_choice;
+    h += `<h4>프로필·격자(사용자 선택)</h4><div class="note">${esc(mc.profile)} — 선택자 ${esc(mc.chosen_by)} · 보간 ${esc(mc.interp_method)} / 공간 ${esc(mc.interp_space_grid)} · 노드 간격 ${esc(gs.step)} · 산출 기간 ${esc(gs.horizon_years)}년 · RF ${esc(rc.rf_row_index)}행 / RD ${esc(rc.rd_row_index)}행</div>` +
+      `<h4>출처(provenance)</h4>` + table(["항목", "값"], [["평가사", esc(p.source_agency)], ["고시일 / 평가기준일 / lag", `${esc(p.curve_date)} / ${esc(p.valuation_date)} / ${p.date_lag_days}`], ["파일 sha256", esc(s.input.file_sha256)], ["원본 사본", esc(p.raw_copy_path)], ["다운로드 시각 / 담당자", `${esc(p.downloaded_at)} / ${esc(p.operator)}`], ["사용 행 캡처", esc(p.capture_path ?? "없음")]], 2) +
       `<h4>라벨 해석</h4><div class="note">RF 후보 ${s.labels.rf_candidates.length} · RD 후보 ${s.labels.rd_candidates.length} · 미해석 행 ${s.labels.unparsed_rows.length} · 매트릭스 ${s.input.n_rows}행, 헤더 ${s.input.header_ok ? "일치" : "불일치"}</div>`;
   }
   h += `<h4>flags_seen</h4>${flagsTable(a.flags_seen)}`;
@@ -280,10 +370,9 @@ function renderApprove() {
   if (a.history?.length) h += `<h4>결정 이력</h4>` + table(["결정", "승인자", "시각", "코멘트", "ack"], a.history.map(x => [esc(x.decision), esc(x.approver), esc(x.timestamp), esc(x.comment), esc(x.acknowledged_codes.join(","))]), 5);
   el.innerHTML = h;
 }
-
 function renderEvidence() {
   const s = STATE; const el = $("evidence-body");
-  if (!s || !s.export?.dir) { el.innerHTML = `<div class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성). ${s?.result?.approved_state_path ? "" : ""}</div>`; return; }
+  if (!s || !s.export?.dir) { el.innerHTML = `<div class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성). 결과 탭의 "엑셀 내려받기"는 승인 전에도 쓸 수 있습니다.</div>`; return; }
   let h = `<h3>증빙 번들 — ${esc(s.export.dir)}</h3><div class="note">xlsx: ${s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"} · 승인 state: ${esc(s.result.approved_state_path ?? "—")} (sha256 ${esc((s.result.approved_state_sha256 || "").slice(0, 16))}…)</div>`;
   h += `<h4>파일</h4><ul>${(s.export.files || []).map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`;
   h += `<h4>체크리스트 (EVIDENCE_REQUIRED_ITEMS → 파일!시트!범위)</h4>` + table(["항목", "존재", "위치"], Object.entries(s.export.checklist_detail || {}).map(([k, v]) => [esc(k), v.exists ? "✔" : "✘", esc(v.location)]), 3);
@@ -291,64 +380,34 @@ function renderEvidence() {
   if (s.export.warnings?.length) h += `<div class="note">${esc(s.export.warnings.join("; "))}</div>`;
   el.innerHTML = h;
 }
-
-function renderAll() {
+async function renderAll() {
   const st = STATE?.run?.status || "대기";
   $("b-profile").textContent = "프로필: " + (STATE?.run?.profile || "—");
   $("b-status").textContent = "상태: " + st; $("b-status").className = "badge " + st;
   $("b-node").textContent = "현재 노드: " + (STATE?.run?.status === "paused" ? STATE.run.paused_at_node + " (승인 대기)" : (STATE?.run?.current_node || "—"));
   $("b-run").textContent = "run: " + (STATE?.run?.run_id || "—") + (STATE?.run?.resume_n ? ` · 재개 ${STATE.run.resume_n}` : "");
-  renderGraph(); renderResult(); renderApprove(); renderEvidence();
+  renderGraph(); renderApprove(); renderEvidence();
   $("state-json").textContent = STATE ? JSON.stringify(STATE, null, 1) : "—";
-}
-
-async function api(method, url, body) {
-  const r = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-  const j = await r.json();
-  if (j.state !== undefined) { STATE = j.state; SUMMARY = j.summary; }
-  return { ok: r.ok, json: j };
-}
-
-async function runApp() {
-  $("run-error").textContent = "";
-  const f = (id) => $("f-" + id).value.trim();
-  const body = { profile: f("profile"), matrix_text: $("f-matrix_text").value, valuation_date: f("valuation_date"), curve_date: f("curve_date"), curve_set_id: f("curve_set_id"),
-    operator: f("operator"), source_agency: f("source_agency"), capture_path: f("capture_path"),
-    instrument: { maturity_date: f("maturity_date"), issuance_type: f("issuance_type"), rating: f("rating"), issuer: f("issuer"), cb_name: f("cb_name"), prior_rating_basis: f("prior_rating_basis"), prior_block_basis: f("prior_block_basis"), rating_capture_path: f("rating_capture_path"), reported_rf_pct: f("reported_rf_pct"), reported_rd_pct: f("reported_rd_pct") } };
-  const r = await api("POST", "/api/run", body);
-  if (!r.ok) $("run-error").textContent = r.json.error || "오류";
-  renderAll();
-  if (r.ok) document.querySelector('[data-tab="approve"]').click();
-}
-
-async function decide(decision) {
-  const ack = [...document.querySelectorAll(".ack:checked")].map(x => x.value);
-  const r = await api("POST", "/api/decision", { decision, approver: $("a-approver").value.trim(), comment: $("a-comment").value, ack });
-  renderAll();
-  if (!r.ok) { const e = $("a-error"); if (e) e.textContent = r.json.error || "오류"; }
-  else if (STATE.run.status === "done") document.querySelector('[data-tab="evidence"]').click();
-  else if (STATE.run.status === "failed") document.querySelector('[data-tab="result"]').click();
-}
-
-async function resumeSnapshot() {
-  const r = await api("POST", "/api/resume", { snapshot_path: $("r-snapshot").value.trim() });
-  renderAll();
-  if (!r.ok) { const e = $("r-error"); if (e) e.textContent = r.json.error || "오류"; }
-}
-
-async function loadFixture() {
-  const r = await (await fetch("/api/fixture")).json();
-  $("f-matrix_text").value = r.matrix_text; $("f-valuation_date").value = r.valuation_date; $("f-curve_date").value = r.curve_date; $("f-curve_set_id").value = r.curve_set_id; $("f-source_agency").value = r.source_agency;
-  for (const k of ["maturity_date", "issuance_type", "rating", "issuer", "cb_name"]) $("f-" + k).value = r.instrument[k];
+  await renderResult();
 }
 
 async function init() {
   GRAPH = await (await fetch("/api/graph")).json();
   const sel = $("f-profile");
   GRAPH.profiles.forEach(p => { const o = document.createElement("option"); o.value = p.name; o.textContent = `${p.name}${p.implemented ? "" : " (초안 미구현)"} — ${p.description}`; o.disabled = !p.implemented; sel.appendChild(o); });
-  $("btn-run").onclick = runApp; $("btn-fixture").onclick = loadFixture;
-  const st = await (await fetch("/api/state")).json(); STATE = st.state; SUMMARY = st.summary;
-  renderAll();
+  GRAPH.step_modes.forEach(m => { const o = document.createElement("option"); o.value = m.key; o.textContent = `${m.label} (${m.key}, dt=${m.dt.toFixed(6)}년)`; $("f-step").appendChild(o); });
+  $("f-step").value = "weekly";
+  $("f-horizon").value = GRAPH.horizon_default; $("f-horizon").max = GRAPH.horizon_default;
+  GRAPH.agencies.forEach(a => { const o = document.createElement("option"); o.value = a; o.textContent = a; $("f-source_agency").appendChild(o); });
+  GRAPH.operators.forEach(a => { const o = document.createElement("option"); o.value = a; o.textContent = a; $("f-operator").appendChild(o); });
+  const oc = document.createElement("option"); oc.value = "__custom__"; oc.textContent = "직접 입력…"; $("f-operator").appendChild(oc);
+  $("f-operator").onchange = () => { $("f-operator_text").hidden = $("f-operator").value !== "__custom__"; };
+  wireDrop("drop", "f-file", "pick", onMatrixFile);
+  wireDrop("drop-cap", "f-capfile", "pick-cap", onCaptureFile);
+  $("btn-fixture").onclick = loadFixture; $("btn-paste").onclick = () => { $("paste-box").hidden = !$("paste-box").hidden; };
+  $("btn-parse").onclick = parsePasted; $("btn-run").onclick = runApp;
+  const st = await (await fetch("/api/state")).json(); STATE = st.state;
+  await renderAll();
 }
 init();
 </script>
