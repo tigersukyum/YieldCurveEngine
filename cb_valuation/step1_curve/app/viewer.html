@@ -66,7 +66,9 @@
   <span id="b-status" class="badge">상태: 대기</span>
   <span id="b-node" class="badge">현재 노드: —</span>
   <span id="b-run" class="badge">run: —</span>
+  <span id="b-ver" class="badge" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-07c</span>
 </header>
+<div id="init-error" class="err" style="grid-column:1/3;padding:8px 14px;display:none;background:#fff5f5"></div>
 
 <div id="left">
   <div class="tabs">
@@ -80,8 +82,9 @@
   <div id="tab-input" class="panel active">
     <h3>① YTM 매트릭스 (채권평가사 시가평가 기준수익률 표)</h3>
     <div class="help">파일 형식: 평가사 사이트에서 내려받은 xlsx/xlsm(첫 시트 또는 'KIS-NET' 시트) 또는 CSV/TSV/TXT. 첫 행 = 종류,구분,적용대상채권,3M,6M,…,50Y — 결측은 '-'. 금리표는 이 PC 밖으로 나가지 않습니다(127.0.0.1 전용).</div>
-    <div id="drop" class="drop">파일을 여기에 끌어다 놓거나 <span class="link" id="pick">파일 선택</span> <input type="file" id="f-file" accept=".csv,.tsv,.txt,.xlsx,.xlsm" hidden>
-      &nbsp;·&nbsp; <span class="link" id="btn-fixture">연습 데이터 불러오기</span> &nbsp;·&nbsp; <span class="link" id="btn-paste">직접 붙여넣기</span></div>
+    <div id="drop" class="drop">여기에 파일을 끌어다 놓거나 아래 버튼으로 선택하세요<br>
+      <input type="file" id="f-file" accept=".csv,.tsv,.txt,.xlsx,.xlsm" style="width:auto;margin-top:8px;padding:4px;background:#fff"></div>
+    <div><button class="ghost" id="btn-paste">직접 붙여넣기(표를 복사해서 넣기)</button></div>
     <div id="paste-box" hidden><textarea id="f-matrix_text" placeholder="종류,구분,적용대상채권,3M,6M,9M,1Y,1.5Y,2Y,2.5Y,3Y,4Y,5Y,7Y,10Y,15Y,20Y,30Y,50Y&#10;,국고채권,국고채,2.422,…"></textarea><button class="ghost" id="btn-parse">붙여넣은 표 읽기</button></div>
     <div id="matrix-info" class="note">아직 매트릭스가 없습니다.</div>
 
@@ -101,7 +104,8 @@
 
     <h3>③ 출처 증빙 (선택)</h3>
     <div class="help"><b>사용 행 캡처</b> = 평가사 화면에서 이번에 쓰는 행(국고채·회사채 등급 행)이 보이는 화면 캡처(이미지 또는 PDF). 감사인 질의 Q12(YTM 커브 출처 캡처)에 대한 증빙이며, 없으면 승인 단계에서 CAPTURE_MISSING 코드를 확인(ack)하고 진행합니다.</div>
-    <div id="drop-cap" class="drop">캡처 파일을 여기에 끌어다 놓거나 <span class="link" id="pick-cap">파일 선택</span> <input type="file" id="f-capfile" accept="image/*,.pdf" hidden></div>
+    <div id="drop-cap" class="drop">캡처 파일을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요<br>
+      <input type="file" id="f-capfile" accept="image/*,.pdf" style="width:auto;margin-top:8px;padding:4px;background:#fff"></div>
     <div id="cap-info" class="note">캡처 없음</div>
 
     <div><button class="primary" id="btn-run">실행 (매트릭스 적재 → 입력 승인 정지)</button></div>
@@ -257,23 +261,19 @@ async function onCaptureFile(file) {
   try { const j = await uploadFile(file, "capture"); CAPTURE_PATH = j.capture_path; $("cap-info").innerHTML = `<span class="ok">캡처 저장: ${esc(j.capture_path)} (${j.bytes} bytes)</span>`; }
   catch (e) { $("cap-info").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
-function wireDrop(zoneId, inputId, pickId, handler) {
+function wireDrop(zoneId, inputId, handler) {
   const z = $(zoneId), inp = $(inputId);
-  z.addEventListener("dragover", e => { e.preventDefault(); z.classList.add("over"); });
-  z.addEventListener("dragleave", () => z.classList.remove("over"));
-  z.addEventListener("drop", e => { e.preventDefault(); z.classList.remove("over"); if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]); });
-  $(pickId).onclick = () => inp.click();
-  inp.onchange = () => { if (inp.files[0]) handler(inp.files[0]); inp.value = ""; };
+  ["dragenter", "dragover"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); z.classList.add("over"); }));
+  z.addEventListener("dragleave", e => { e.preventDefault(); z.classList.remove("over"); });
+  z.addEventListener("drop", e => { e.preventDefault(); e.stopPropagation(); z.classList.remove("over"); const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) handler(f); });
+  inp.addEventListener("change", () => { if (inp.files && inp.files[0]) handler(inp.files[0]); inp.value = ""; });
 }
+// 페이지 전체에 파일을 떨어뜨려도 브라우저가 파일을 열지 않도록
+["dragover", "drop"].forEach(ev => window.addEventListener(ev, e => { if (!e.target.closest || !e.target.closest(".drop")) e.preventDefault(); }));
 async function parsePasted() {
   const text = $("f-matrix_text").value;
   const r = await fetch("/api/parse", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ matrix_text: text }) });
   const j = await r.json(); setPreview(text, j.preview, "붙여넣기");
-}
-async function loadFixture() {
-  const r = await (await fetch("/api/fixture")).json();
-  $("f-matrix_text").value = r.matrix_text; setPreview(r.matrix_text, r.preview, r.note);
-  $("f-valuation_date").value = r.valuation_date; $("f-curve_date").value = r.curve_date; $("f-curve_set_id").value = r.curve_set_id; $("f-source_agency").value = r.source_agency;
 }
 
 // ---------- 실행·승인
@@ -392,7 +392,9 @@ async function renderAll() {
 }
 
 async function init() {
-  GRAPH = await (await fetch("/api/graph")).json();
+  const r0 = await fetch("/api/graph", { cache: "no-store" });
+  if (!r0.ok) throw new Error("/api/graph " + r0.status);
+  GRAPH = await r0.json();
   const sel = $("f-profile");
   GRAPH.profiles.forEach(p => { const o = document.createElement("option"); o.value = p.name; o.textContent = `${p.name}${p.implemented ? "" : " (초안 미구현)"} — ${p.description}`; o.disabled = !p.implemented; sel.appendChild(o); });
   GRAPH.step_modes.forEach(m => { const o = document.createElement("option"); o.value = m.key; o.textContent = `${m.label} (${m.key}, dt=${m.dt.toFixed(6)}년)`; $("f-step").appendChild(o); });
@@ -402,14 +404,17 @@ async function init() {
   GRAPH.operators.forEach(a => { const o = document.createElement("option"); o.value = a; o.textContent = a; $("f-operator").appendChild(o); });
   const oc = document.createElement("option"); oc.value = "__custom__"; oc.textContent = "직접 입력…"; $("f-operator").appendChild(oc);
   $("f-operator").onchange = () => { $("f-operator_text").hidden = $("f-operator").value !== "__custom__"; };
-  wireDrop("drop", "f-file", "pick", onMatrixFile);
-  wireDrop("drop-cap", "f-capfile", "pick-cap", onCaptureFile);
-  $("btn-fixture").onclick = loadFixture; $("btn-paste").onclick = () => { $("paste-box").hidden = !$("paste-box").hidden; };
+  wireDrop("drop", "f-file", onMatrixFile);
+  wireDrop("drop-cap", "f-capfile", onCaptureFile);
+  $("btn-paste").onclick = () => { $("paste-box").hidden = !$("paste-box").hidden; };
   $("btn-parse").onclick = parsePasted; $("btn-run").onclick = runApp;
   const st = await (await fetch("/api/state")).json(); STATE = st.state;
   await renderAll();
 }
-init();
+init().catch(e => {
+  const box = $("init-error"); box.style.display = "block";
+  box.textContent = "화면 초기화 실패: " + e.message + "\n" + "이 화면은 로컬 서버를 통해서만 동작합니다. start_app.bat 를 실행한 뒤 브라우저에서 http://127.0.0.1:8765 를 여세요(viewer.html 파일을 직접 열면 동작하지 않습니다). 화면이 옛 버전이면 Ctrl+F5 로 새로고침하세요.";
+});
 </script>
 </body>
 </html>

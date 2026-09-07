@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 app/server.py — 로컬 HTTP 서버(표준 라이브러리 + openpyxl). 브라우저에서 http://127.0.0.1:8765 를 열면 viewer.html 이 나온다.
-API: GET /api/graph(EDGES·노드·프로필·노드 간격·평가사·담당자), GET /api/state, GET /api/fixture(연습 데이터), GET /api/blocks(검토자 형식 4블록),
+API: GET /api/graph(EDGES·노드·프로필·노드 간격·평가사·담당자), GET /api/state, GET /api/blocks(검토자 형식 4블록),
      GET /api/export(현재 state 를 xlsx 로 내려받기), POST /api/parse(붙여넣기 표 미리보기), POST /api/upload(매트릭스 파일·캡처 파일),
      POST /api/run(입력 → 실행), POST /api/decision(승인/거절 → set_decision → 재개), POST /api/resume(스냅샷 파일 → 세션 복원).
 서버는 흐름을 판단하지 않는다(EDGES). 승인 필드는 set_decision() 만 쓴다. 외부 네트워크 접근 없음(127.0.0.1 전용).
@@ -52,14 +52,6 @@ def graph_payload():
     return j
 
 
-def fixture_payload():
-    p = os.path.join(PKG, "tests", "fixtures", "kisnet_matrix_20251231.csv")
-    with open(p, encoding="utf-8-sig") as fh:
-        text = fh.read()
-    return {"matrix_text": text, "preview": preview(text, C0), "valuation_date": "2025-12-31", "curve_date": "2025-12-31", "curve_set_id": "SAMPLE", "source_agency": "KIS",
-            "note": "연습 데이터: 2025-12-31 시가평가 기준수익률 표(62행)"}
-
-
 def _safe_name(name: str) -> str:
     return re.sub(r"[^\w.\-가-힣]", "_", os.path.basename(name or "file"))
 
@@ -85,6 +77,7 @@ class H(BaseHTTPRequestHandler):
         body = obj if isinstance(obj, bytes) else json.dumps(obj, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(code); self.send_header("Content-Type", ctype + ("; charset=utf-8" if ctype.startswith(("text", "application/json")) else ""))
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")  # 옛 화면 캐시 방지
         for k, v in (headers or {}).items():
             self.send_header(k, v)
         self.end_headers(); self.wfile.write(body)
@@ -99,8 +92,6 @@ class H(BaseHTTPRequestHandler):
                     return self._send(200, fh.read(), "text/html")
             if self.path == "/api/graph":
                 return self._send(200, graph_payload())
-            if self.path == "/api/fixture":
-                return self._send(200, fixture_payload())
             if self.path == "/api/state":
                 with LOCK:
                     s = SESSION["state"]
@@ -170,7 +161,8 @@ def main(argv=None):
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:  # noqa: BLE001
         pass
-    print(f"이자율 커브 엔진 앱: {url}   (작업 폴더 {SESSION['base_dir']}; 종료 Ctrl+C)")
+    print(f"이자율 커브 엔진 앱: {url}   (작업 폴더 {SESSION['base_dir']}; 화면 {os.path.join(HERE, 'viewer.html')}; 종료 Ctrl+C)")
+    print("브라우저에서 위 주소를 여세요. viewer.html 파일을 직접 열면 동작하지 않습니다.")
     if a.open:
         webbrowser.open(url)
     try:
