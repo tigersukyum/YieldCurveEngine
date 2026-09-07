@@ -30,3 +30,6 @@ cb_valuation/step1_curve/graph/graph.mmd
 
 # Office 잠금 파일
 ~$*
+
+# PC 별 개인 설정(담당자 목록 등)
+config/
