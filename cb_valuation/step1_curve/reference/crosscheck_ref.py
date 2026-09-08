@@ -44,13 +44,16 @@ def run_engine(matrix_text, profile, rf_row, rd_row, valuation, curve_date=None,
         shutil.rmtree(base, ignore_errors=True)
 
 
-def sheet_rows(ws):
-    """(구분, 적용대상채권) 라벨 → {tenor: value} ; 헤더 1행, 연수 2행, 값 3행부터(단위 %)."""
+def sheet_rows(ws, dup_prefix=None):
+    """적용대상채권 라벨 → {tenor: value} ; 헤더 1행, 연수 2행, 값 3행부터(단위 %).
+    KIS 현물 시트는 라벨이 유일('사모회사채AAA'); 'YTM Matrix' 시트는 사모 행도 '회사채AAA' 라 두 번째 등장에 dup_prefix('사모')를 붙인다."""
     out = {}
     for r in ws.iter_rows(min_row=3, values_only=True):
         if r is None or len(r) < 4 or (r[1] is None and r[2] is None):
             continue
-        key = str(r[2] or "").strip()  # 적용대상채권 라벨은 시트 안에서 유일(사모 회사채는 '사모회사채AAA' 식으로 구분됨)
+        key = str(r[2] or "").strip()
+        if dup_prefix and key in out:
+            key = dup_prefix + key
         out[key] = {t: (float(v) if isinstance(v, (int, float)) else None) for t, v in zip(TEN, r[3:3 + len(TEN)])}
     return out
 
@@ -81,7 +84,7 @@ def part_A(profiles=("LINEAR", "REVIEWER_2024", "PCHIP"), max_rd_rows=None):
         text = fh.read()
     pv = preview(text, G.Constants)
     parsed = {r["row_index"]: r for r in parse_matrix_text(text, G.Constants)["rows"]}  # ytm_pct 는 파서 원문에만 있다
-    sheet_vals = sheet_rows(wb["YTM Matrix"]); same = diff = 0
+    sheet_vals = sheet_rows(wb["YTM Matrix"], dup_prefix="사모"); same = diff = 0
     for r in pv["rows"]:
         key = kis_label(r)
         cand = [k for k in sheet_vals if k == key]
