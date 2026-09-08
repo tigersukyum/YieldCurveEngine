@@ -33,3 +33,6 @@ cb_valuation/step1_curve/graph/graph.mmd
 
 # PC 별 개인 설정(담당자 목록 등)
 config/
+
+# 화면 "엑셀 내려받기" 산출물(승인 전 임시 xlsx)
+exports/

@@ -1,6 +1,6 @@
 # GRAPH_SPEC — 1단계 이자율 커브 그래프 (자동 생성: graph/export_spec.py ← graph/step1_graph.py + graph_check.SCENARIOS)
 
-노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `6d4d8865a43d…` · spec `f714a5960536…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
+노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `1c62017129a6…` · spec `26146e2a9624…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
 
 흐름의 유일한 정의는 `graph/step1_graph.py` 의 `EDGES` 배열이다. 이 문서는 그 배열을 사람이 읽기 좋게 펼친 것이며, 불일치가 있으면 코드가 우선한다(`python cb_valuation/step1_curve/graph/export_spec.py` 로 재생성). `python cb_valuation/step1_curve/graph/graph_check.py` 가 불변식·두 갈래 시나리오·노드 쓰기 추적·상수 지문 결정성을 검사한다.
 
@@ -18,8 +18,8 @@
 | 7 | `bootstrap` | 부트스트랩(RF·RD) | `bootstrap` | bootstrap.*: 모드 A DF_n=(1−c_nΣDF)/(1+c_n) (BOOT!H/I 동치) / 모드 B knot brent + 중간 이표일 보간(+Gauss-Seidel), df_valid, solver_log. |
 | 8 | `verify_par` | 파 검증(핵심 게이트) | `par_check` | par_check.*: 모든 만기 Σ c·DF + DF_n − 목표가격 (RF/RD), max_abs_err, 미사용 knot 잔차 INFO. |
 | 9 | `convert_compounding` | 복리 변환 | `conv` | conv.*: annual=expm1(m·log1p(s)), cont=m·log1p(s) ; 왕복 검사 ; basis annual_eff/continuous (§3.7.4.4 구조적 차단). |
-| 10 | `map_tree_grid` | 트리 격자 매핑 | `tree` | tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid(표시용, INTERP_METHOD_PRE). |
-| 11 | `compute_forward` | 선도금리 산출 | `fwd` | fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=(1+f)^(−dt) [① XL BM F열], F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1). |
+| 10 | `map_tree_grid` | 트리 격자 매핑 | `tree` | tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid·spot_annual_interp_on_grid(표시용: INTERP_METHOD_PRE YTM 보간, 연복리 현물 선형보간 = 검토자 row11/row12). |
+| 11 | `compute_forward` | 선도금리 산출 | `fwd` | fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step = exp(−f dt)[③] 또는 1/(1+F)[① NODE_DISCOUNT_CONV=1_discrete_fwd], df_step_alt = 다른 쪽(③ 모드에서는 XL BM F열 (1+f)^(−dt)), F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1). |
 | 12 | `verify_fwd_spot` | 선도-현물 정합(Q11) | `fwd_spot_check` | fwd_spot_check.*: \|Σ_{k≤i}(−f_k dt_k) − ln DF_spot(t_i)\| 로그 공간 게이트 + ΠDF−DF 절대차 + Q11 예시. |
 | 13 | `run_sensitivity` | 민감도 분석 | `sensitivity` | sensitivity.*: (method×space) + FREQ_SENSITIVITY_SET 변형을 순수 함수로 재실행, DF 상대차표(주 커브 불변) ; EXCEL_REF 면 excel_recon. |
 | 14 | `compute_headline` | 헤드라인 산출 | `headline` | headline.*: HEADLINE_RULE 잔여만기(grid.maturity_years) YTM(RF/RD), 후보 진단표, reported_*=instrument.reported_headline 복사, ROUND_HALF_UP·HEADLINE_ROUND_DIGITS 자리 비교 → match_ok(True/False; reported 없으면 None). 만기일 없는 커브 전용 실행에서는 후보 없음·None. |
@@ -373,7 +373,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | DEFAULT | 모드 A(이표격자 YTM 선형보간 후 폐형식 부트스트랩) + 트리 격자 연복리 현물 선형 — 엑셀 BOOT/BM·검토자 논리 재현(입력만 live 교정) |
 | PCHIP_TREE | DEFAULT 와 같은 부트스트랩, 트리 격자 보간만 PCHIP(g=r_c·t, log_df) — 선도곡선 연속·음의 선도 방지(보간법 변경 공시 필요) |
 | KICPA_1130 | 모드 B(공시 마디 미지수 근찾기 + 중간 이표일 보간) + 관행적 가격 — 한국공인회계사회 실무사례 1130 준용 |
-| REVIEWER_2024 | RF·RD 분기 부트스트랩, 주간 격자, 분기 계단 선도, 이산 할인 — 2024 내부 검토자 패키지 재현(대조 전용) |
+| REVIEWER_2024 | RF·RD 분기 부트스트랩(c=YTM/4, par 10000), 격자 위 분기 선도 일정(분기 DF 사이 log-linear), 이산 할인 1/(1+F), 표시용 현물은 분기 연복리 현물의 선형보간 — 2024 내부 검토자 Rf_dc/Rd_dc 시트와 같은 원리(수식 시트 출력용) |
 | EXCEL_REF | 엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지 |
 
 필수 증빙 항목(전항목이 `export.cell_map` 에 `<file>!<sheet|->!<range|json_path>` 로 있어야 done 도달): Q1, Q8, Q9_FWD_INPUT, Q10_1, Q10_2, Q11, Q12, Q13, C33, C34, C35, C36, C37, C38, C39, C40, C41, C43, C44, C48, HEADLINE_RF, HEADLINE_RD, HEADLINE_RATING, HEADLINE_BLOCK, KICPA_INTERP_DISCLOSURE, RUN_PATH, APPROVALS
@@ -413,7 +413,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `RF_REGRID_RULE` | `"interp"` | \| "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_REF 전용) |
 | `MIN_KNOTS` | `4` | PCHIP 끝점 3점식 요건 + 여유 (열린 결정) |
 | `SENSITIVITY_COMBOS` | `[("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_ann` | 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단 |
-| `PROFILES_IMPLEMENTED` | `("DEFAULT", "PCHIP_TREE")` | 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화 |
+| `PROFILES_IMPLEMENTED` | `("DEFAULT", "PCHIP_TREE", "REVIEWER_2024")` | 앱 구현 범위 — 러너 사전 게이트·화면 비활성화 (KICPA_1130 모드 B·EXCEL_REF 결함 재현은 미구현) |
 | `BLOCK_OF_ISSUANCE` | `{"사모": "사모무보증", "공모": "공모무보증"}` | 발행형태 → KIS-NET 고시 블록(B39 공모무보증 / B54 사모무보증), 감사인 Q13 |
 | `RATING_ORDER` | `["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-", "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-"` | KIS-NET 회사채 등급 서열(블록 분할 기준: 서열이 되돌아가면 새 블록); 부호 없는 등급은 "0" 으로 정규화 |
 | `NOTCH_DEFAULT` | `0` | 한공회 §3.9.1 노칭 (≠0 → NOTCH_APPLIED 승인) |
@@ -471,6 +471,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `EVIDENCE_FILES` | `{"01": ("raw_matrix", "csv"), "02": ("rows_used", "csv"), "03": ("knots", "csv"), "04": ("` |  |
 | `XLSX_REQUIRED` | `True` | 사용자 결정 2026-09-07: xlsx 는 필수 증빙 — 없으면 export 엣지 'xlsx누락' → fail ; openpyxl 은 pyproject 선언 의존성(배포 PC 는 pip install .) |
 | `XLSX_TEMPLATE` | `"reviewer_2024_dc"` | REV 8521 검토요구사항 xlsx 의 Rf_dc/Rd_dc 시트 서식 재현 + par 검증 행 추가 (docs/XLSX_TEMPLATE.md) |
+| `XLSX_FORMULA_SHEETS` | `True` | 사용자 결정 2026-09-08: Rf_dc/Rd_dc 는 검토자 시트 그대로 **살아있는 수식 + 원본 서식**(io/reviewer_sheet, docs/REVIEWER_SHEET_SPEC.md). 적용 조건은 reviewer_sheet.applicable(검토자 방식 상수 + 주간/월간 격자); 불가하면 값 시트(XLSX_DC_BLOCKS) |
 | `XLSX_SHEETS` | `("INPUT_RAW", "ROWS_USED", "PROVENANCE", "CONVENTIONS", "Rf_dc", "Rd_dc", "PAR_CHECK",` |  |
 | `XLSX_DC_STYLE` | `{"label_col": "B", "first_data_col": "C", "freeze_panes": "E1", "width_label": 18.7, "widt` |  |
 | `XLSX_DC_BLOCKS` | `[` | (블록 제목, [(행 라벨, 원천 state 접두사, 숫자 서식)]) — 열 = 마디(블록 1·3) 또는 격자 스텝(블록 2·4) ; 라벨·서식은 REV Rf_dc r3~r38 원문({…} 커브별 치환: rate=RISK FREE RATE\|RISKY RATE, period=HALF-YEAR\|QUARTER) |

@@ -1,6 +1,8 @@
 # XLSX_TEMPLATE — 증빙 통합문서 규격 (사용자 결정 2026-09-07: xlsx 필수, 검토자 `Rf_dc`/`Rd_dc` 서식 재현 + par 검증 행)
 
-원천: `Constants.XLSX_REQUIRED / XLSX_TEMPLATE / XLSX_SHEETS / XLSX_DC_STYLE / XLSX_DC_BLOCKS / XLSX_COLUMNS`(`graph/step1_graph.py`; 표는 GRAPH_SPEC §10 에 자동 생성). 서식의 출처는 내부 검토자 패키지 `8521_평가보고서 검토자의 검토요구사항_Call Option Valuation_KBI metal_2024.xlsx` 의 `Rf_dc`(B1:TC38)·`Rd_dc`(A1:TD53) 시트를 openpyxl 로 읽어 확인한 값이다(2026-09-07; 원본은 `ref/` 커밋 제외, 셀 값은 fixture C `tests/fixtures/reviewer_curves_20241231.json`).
+원천: `Constants.XLSX_REQUIRED / XLSX_TEMPLATE / XLSX_FORMULA_SHEETS / XLSX_SHEETS / XLSX_DC_STYLE / XLSX_DC_BLOCKS / XLSX_COLUMNS`(`graph/step1_graph.py`; 표는 GRAPH_SPEC §10 에 자동 생성). 서식의 출처는 내부 검토자 패키지 `8521_평가보고서 검토자의 검토요구사항_Call Option Valuation_KBI metal_2024.xlsx` 의 `Rf_dc`(B1:TC38)·`Rd_dc`(A1:TD53) 시트를 openpyxl 로 읽어 확인한 값이다(2026-09-07; 원본은 `ref/` 커밋 제외, 셀 값은 fixture C `tests/fixtures/reviewer_curves_20241231.json`).
+
+**2026-09-08 사용자 결정(우선)**: `Rf_dc`/`Rd_dc` 는 검토자 시트를 **그대로 — 살아있는 엑셀 수식 + 원본 서식 —** 재현한다(`XLSX_FORMULA_SHEETS=True`, `io/reviewer_sheet.py`, 명세 `docs/REVIEWER_SHEET_SPEC.md`). par 검증은 그 시트의 MODEL CHECK 행(수식)이다. 적용 조건은 `reviewer_sheet.applicable`(검토자 방식 상수 = 프로필 REVIEWER_2024 + 주간/월간 격자 + 테너·이표기간이 스텝의 정수배). 조건 밖(DEFAULT·PCHIP_TREE, 일간 격자)에서는 아래 §3~§4 의 **값 시트**(XLSX_DC_BLOCKS)를 쓰고 B2 에 사유를 적는다. 나머지 시트(§2)는 두 경우 모두 같다.
 
 ## 1. 왜 xlsx 가 필수인가
 - 감사인 Q1 "파일/탭/셀 위치와 함께 제출" — `checklist_map.json` 의 위치 문자열 `<file>!<sheet>!<range>` 가 xlsx 시트·셀을 가리킨다.
@@ -13,7 +15,7 @@ INPUT_RAW · ROWS_USED · PROVENANCE · CONVENTIONS · **Rf_dc** · **Rd_dc** ·
 - 열 지향 시트(PAR_CHECK, FWD_SPOT_CHECK, RUN_PATH, APPROVALS …)는 `XLSX_COLUMNS` 의 헤더를 1행에 쓴다(basis 라벨 포함).
 - `Rf_dc`/`Rd_dc` 는 **행 지향**(검토자 배치): 라벨은 B열, 데이터는 C열부터 오른쪽으로, 블록 사이 빈 행 1개.
 
-## 3. Rf_dc / Rd_dc 서식 (`XLSX_DC_STYLE`)
+## 3. Rf_dc / Rd_dc 값 시트 서식 (`XLSX_DC_STYLE`; 수식 시트 미적용 시에만)
 | 항목 | 값 | 검토자 원본 |
 |---|---|---|
 | 제목 셀 | B1 = "무위험이자율" / "위험이자율" (굵게) | Rf_dc!B1, Rd_dc!B1 |
@@ -25,7 +27,8 @@ INPUT_RAW · ROWS_USED · PROVENANCE · CONVENTIONS · **Rf_dc** · **Rd_dc** ·
 | 블록 제목 | 굵게, 데이터 없음 | r3, r9, r15, r30 |
 | 숫자 서식 | 블록 표의 서식 열 그대로(`0.000%`, `0.00000%`, `#,##0.00_ `, `0.00000_ ` 등) | 동일 |
 
-## 4. 블록과 행 (`XLSX_DC_BLOCKS`; `{rate}` = RISK FREE RATE / RISKY RATE, `{period}` = HALF-YEAR(RF_FREQ=2) / QUARTER(RD_FREQ=4 또는 REVIEWER_2024 의 RF))
+## 4. 값 시트의 블록과 행 (`XLSX_DC_BLOCKS`; `{rate}` = RISK FREE RATE / RISKY RATE, `{period}` = HALF-YEAR(RF_FREQ=2) / QUARTER(RD_FREQ=4 또는 REVIEWER_2024 의 RF))
+수식 시트(REVIEWER_SHEET_SPEC §2)는 검토자 원본 행 번호·라벨을 그대로 쓰므로 이 표를 따르지 않는다. cell_map 키(`RF:block1~4`, `RD:block1~5`)는 두 작성기가 같은 이름으로 낸다.
 | 블록 | 열 = | 행(라벨 → 원천 접두사) | 검토자 원본 행 |
 |---|---|---|---|
 | 1 `{rate} - YTM` | 공시 마디(TENOR_LABELS) | WEEKS(테너 주수), TENOR, `{rate} - YTM`(rows), SPOT RATE(bootstrap, 연복리) | r4~r7 |

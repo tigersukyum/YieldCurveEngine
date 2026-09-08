@@ -66,7 +66,7 @@
   <span id="b-status" class="badge">상태: 대기</span>
   <span id="b-node" class="badge">현재 노드: —</span>
   <span id="b-run" class="badge">run: —</span>
-  <span id="b-ver" class="badge" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-07d</span>
+  <span id="b-ver" class="badge" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08a</span>
 </header>
 <div id="init-error" class="err" style="grid-column:1/3;padding:8px 14px;display:none;background:#fff5f5"></div>
 
@@ -127,14 +127,14 @@
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-07d";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08a";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
 const num = (x, d = 6) => (x == null) ? "—" : (typeof x === "number" ? (Math.abs(x) < 1e-4 && x !== 0 ? x.toExponential(2) : x.toFixed(d)) : String(x));
 const esc = (s) => String(s ?? "").replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
 function fmtVal(v, fmt) {  // 엑셀 number_format → 화면 표시(값은 그대로, 표시만)
-  if (v == null) return "—"; if (typeof v !== "number") return esc(v);
+  if (v == null) return "—"; if (typeof v === "boolean") return v ? "TRUE" : "FALSE"; if (typeof v !== "number") return esc(v);
   if (fmt.includes("E+")) return v.toExponential(2);
   if (fmt.endsWith("%")) { const d = (fmt.split(".")[1] || "").replace(/%/g, "").length; return (v * 100).toFixed(d) + "%"; }
   const d = (fmt.split(".")[1] || "").replace(/[^0]/g, "").length;
@@ -328,10 +328,10 @@ async function renderResult() {
   if (BLOCKS && BLOCKS[c]) {
     for (const b of BLOCKS[c]) {
       h += `<h3>${b.index}. ${esc(b.title)}</h3>`;
-      if (b.index === 1 || b.index === 3) {  // 행 지향(마디·부트스트랩 격자)
-        const n = Math.max(...b.rows.map(x => x.values.length));
-        h += `<div class="scroll"><table><tr><th class="l">항목</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join("")}</tr>` +
-          b.rows.map(x => `<tr><td class="l">${esc(x.label)}</td>${x.values.map(v => `<td>${fmtVal(v, x.fmt)}</td>`).join("")}</tr>`).join("") + `</table></div>`;
+      if (b.orient === "rows" || b.index === 1 || b.index === 3) {  // 행 지향(검토자 시트 배치: 행 = 항목, 열 = 마디/스텝)
+        const n = Math.max(...b.rows.map(x => x.values.length)), hasX = b.rows.some(x => x.extra != null);
+        h += `<div class="scroll"><table><tr><th class="l">항목</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join("")}${hasX ? `<th>Σ/Π</th>` : ""}</tr>` +
+          b.rows.map(x => `<tr><td class="l">${esc(x.label)}</td>${x.values.map(v => `<td>${fmtVal(v, x.fmt)}</td>`).join("")}${hasX ? `<td>${x.extra == null ? "" : fmtVal(x.extra, x.fmt)}</td>` : ""}</tr>`).join("") + `</table></div>`;
       } else {  // 스텝 지향(격자): 행 = 스텝
         const n = Math.max(...b.rows.map(x => x.values.length)), LIM = 300;
         h += `<div class="scroll"><table><tr>${b.rows.map(x => `<th>${esc(x.label)}</th>`).join("")}</tr>` +

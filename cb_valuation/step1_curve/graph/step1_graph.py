@@ -46,7 +46,7 @@ class Constants:
         "DEFAULT": "모드 A(이표격자 YTM 선형보간 후 폐형식 부트스트랩) + 트리 격자 연복리 현물 선형 — 엑셀 BOOT/BM·검토자 논리 재현(입력만 live 교정)",
         "PCHIP_TREE": "DEFAULT 와 같은 부트스트랩, 트리 격자 보간만 PCHIP(g=r_c·t, log_df) — 선도곡선 연속·음의 선도 방지(보간법 변경 공시 필요)",
         "KICPA_1130": "모드 B(공시 마디 미지수 근찾기 + 중간 이표일 보간) + 관행적 가격 — 한국공인회계사회 실무사례 1130 준용",
-        "REVIEWER_2024": "RF·RD 분기 부트스트랩, 주간 격자, 분기 계단 선도, 이산 할인 — 2024 내부 검토자 패키지 재현(대조 전용)",
+        "REVIEWER_2024": "RF·RD 분기 부트스트랩(c=YTM/4, par 10000), 격자 위 분기 선도 일정(분기 DF 사이 log-linear), 이산 할인 1/(1+F), 표시용 현물은 분기 연복리 현물의 선형보간 — 2024 내부 검토자 Rf_dc/Rd_dc 시트와 같은 원리(수식 시트 출력용)",
         "EXCEL_REF": "엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지",
     }
     # --- 입력 레이아웃
@@ -82,7 +82,7 @@ class Constants:
     RF_REGRID_RULE = "interp"  # | "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_REF 전용)
     MIN_KNOTS = 4  # PCHIP 끝점 3점식 요건 + 여유 (열린 결정)
     SENSITIVITY_COMBOS = [("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_annual"), ("linear", "spot_continuous")]  # 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단
-    PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE")  # 앱 초안 구현 범위(모드 A·par·flat/flat_forward·continuous_from_spot·③ 할인) — 러너 사전 게이트·화면 비활성화
+    PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE", "REVIEWER_2024")  # 앱 구현 범위 — 러너 사전 게이트·화면 비활성화 (KICPA_1130 모드 B·EXCEL_REF 결함 재현은 미구현)
     BLOCK_OF_ISSUANCE = {"사모": "사모무보증", "공모": "공모무보증"}  # 발행형태 → KIS-NET 고시 블록(B39 공모무보증 / B54 사모무보증), 감사인 Q13
     RATING_ORDER = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-", "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-", "B+", "B0", "B-"]  # KIS-NET 회사채 등급 서열(블록 분할 기준: 서열이 되돌아가면 새 블록); 부호 없는 등급은 "0" 으로 정규화
     NOTCH_DEFAULT = 0  # 한공회 §3.9.1 노칭 (≠0 → NOTCH_APPLIED 승인)
@@ -155,6 +155,7 @@ class Constants:
                       "09": ("flags", "csv"), "10": ("headline", "json"), "11": ("sensitivity", "csv"), "12": ("approvals", "json")}  # 번들 규격 (감사인 Q1 '파일/탭/셀')
     XLSX_REQUIRED = True  # 사용자 결정 2026-09-07: xlsx 는 필수 증빙 — 없으면 export 엣지 'xlsx누락' → fail ; openpyxl 은 pyproject 선언 의존성(배포 PC 는 pip install .)
     XLSX_TEMPLATE = "reviewer_2024_dc"  # REV 8521 검토요구사항 xlsx 의 Rf_dc/Rd_dc 시트 서식 재현 + par 검증 행 추가 (docs/XLSX_TEMPLATE.md)
+    XLSX_FORMULA_SHEETS = True  # 사용자 결정 2026-09-08: Rf_dc/Rd_dc 는 검토자 시트 그대로 **살아있는 수식 + 원본 서식**(io/reviewer_sheet, docs/REVIEWER_SHEET_SPEC.md). 적용 조건은 reviewer_sheet.applicable(검토자 방식 상수 + 주간/월간 격자); 불가하면 값 시트(XLSX_DC_BLOCKS)
     XLSX_SHEETS = ("INPUT_RAW", "ROWS_USED", "PROVENANCE", "CONVENTIONS", "Rf_dc", "Rd_dc", "PAR_CHECK",
                    "FWD_SPOT_CHECK", "SENSITIVITY", "HEADLINE", "FLAGS", "APPROVALS", "RUN_PATH")  # 시트 순서 고정 ; Rf_dc/Rd_dc 는 행 지향(XLSX_DC_BLOCKS)
     XLSX_DC_STYLE = {"label_col": "B", "first_data_col": "C", "freeze_panes": "E1", "width_label": 18.7, "width_data": 12.7,
@@ -183,6 +184,7 @@ class Constants:
                       "EXTRAP_LEFT": "origin_anchored", "EXTRAP_RIGHT": "excel_zero", "HEADLINE_RULE": "ceil_tenor",
                       "TREE_GRID": {"mode": "excel", "N": 181, "dt_weekly": None}, "DAYCOUNT": "30/360"},  # XL DATA!A4=3.475(YearFrac basis 0), B4=181
         "REVIEWER_2024": {"RF_FREQ": 4, "RD_FREQ": 4, "TREE_GRID": {"mode": "weekly", "N": None, "dt_weekly": 1.0 / 52.0},
+                          "INTERP_METHOD": "linear", "INTERP_SPACE_GRID": "log_df",  # 분기 DF 사이 log-linear(=변형 ④) ⇔ 분기 안 선도 일정(검토자 row13/35), (0,1) 마디로 Q1 도 일정
                           "TREE_FWD_RULE": "piecewise_quarter_step", "EXTRAP_LEFT": "flat", "NODE_DISCOUNT_CONV": "1_discrete_fwd"},
         "KICPA_1130": {"BOOTSTRAP_MODE": "bootstrap_with_interpolation", "PRICE_MODE": "kicpa_conventional",
                        "INTERP_SPACE_GRID": "spot_annual", "CURVE_HORIZON_Y": 50.0},
@@ -266,7 +268,8 @@ def new_state(C=Constants) -> NS:
         conv=NS(spot_annual=curve(None), spot_cont=curve(None), roundtrip_max_err=None, all_finite=False),
         tree=NS(spot_annual_on_grid=curve(None), spot_cont_on_grid=curve(None), df_spot_on_grid=curve([]), df_finite=False, df_range_ok=False,
                 df_monotone_ok=False, extrap_left_flat_steps=curve([]), extrap_left_origin_steps=curve([]), extrap_right_steps=curve([]),
-                excel_zero_used=False, interp_method_used=None, interp_space_used=None, knot_roundtrip_max_err=None, ytm_on_grid=curve(None)),
+                excel_zero_used=False, interp_method_used=None, interp_space_used=None, knot_roundtrip_max_err=None, ytm_on_grid=curve(None),
+                spot_annual_interp_on_grid=curve(None)),
         fwd=NS(cont_on_grid=curve(None), disc_per_step=curve(None), disc_annual_eff=curve(None), df_step=curve([]), df_step_alt=curve([]), df_cum=curve([]),
                spot_per_step=curve(None), growth_step=curve([]), growth_cum_prev=curve([]), df_backward=curve([]), boot_fwd_pp=curve(None), boot_fwd_annual=curve(None),
                negative_count=curve(0), max_jump_bp=curve(0.0), all_finite=False, rule=None, node_discount_conv=None, node_discount_reason=None, tenor_table=curve([])),
@@ -406,11 +409,11 @@ def node_convert_compounding(s, C):
     pass
 
 def node_map_tree_grid(s, C):
-    """tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid(표시용, INTERP_METHOD_PRE)."""
+    """tree.*: 동일 보간 함수(interp.method/space_grid)로 spot→트리 격자, DF=exp(−r_c t), 유한·범위(DF_RANGE)·단조(TOL_DF_MONOTONE), 격자 보간체의 마디 왕복 오차(knot_roundtrip_max_err), 외삽 스텝 사실 기록(판정 없음), 실제 사용한 method/space(보간체 객체에서) 기록, ytm_on_grid·spot_annual_interp_on_grid(표시용: INTERP_METHOD_PRE YTM 보간, 연복리 현물 선형보간 = 검토자 row11/row12)."""
     s.tree.interp_method_used, s.tree.interp_space_used = s.interp.method, s.interp.space_grid
 
 def node_compute_forward(s, C):
-    """fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step=exp(−f dt) [③], df_step_alt=(1+f)^(−dt) [① XL BM F열], F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1)."""
+    """fwd.*: f_i=(lnDF_{i−1}−lnDF_i)/dt_i (BM C-FWD), df_step = exp(−f dt)[③] 또는 1/(1+F)[① NODE_DISCOUNT_CONV=1_discrete_fwd], df_step_alt = 다른 쪽(③ 모드에서는 XL BM F열 (1+f)^(−dt)), F_i=expm1(f dt), 연환산, spot_per_step, growth_step=1+F, growth_cum_prev=Π_{j<k}(1+F_j), df_backward=Π_{j≥k}df_step_j, 부트스트랩 격자 선도(boot_fwd_pp/annual), negative_count, max_jump_bp(BP_PER_UNIT), 테너간 선도표(Q10-1)."""
     s.fwd.rule = C.TREE_FWD_RULE
     s.fwd.node_discount_conv = C.NODE_DISCOUNT_CONV
     s.fwd.node_discount_reason = C.CONVENTION_REASONS["NODE_DISCOUNT_CONV"]

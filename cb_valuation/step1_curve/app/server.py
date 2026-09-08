@@ -22,7 +22,7 @@ PKG = os.path.dirname(HERE)
 SESSION = {"state": None, "C": None, "base_dir": os.getcwd(), "last_path": None, "error": None}
 LOCK = threading.Lock()
 C0 = G.Constants
-APP_VERSION = "2026-09-07d"  # 화면(viewer.html 의 VIEWER_VERSION)과 같아야 한다 — 옛 서버/옛 화면 조합을 화면이 감지한다
+APP_VERSION = "2026-09-08a"  # 화면(viewer.html 의 VIEWER_VERSION)과 같아야 한다 — 옛 서버/옛 화면 조합을 화면이 감지한다
 
 
 def _state_json(s):

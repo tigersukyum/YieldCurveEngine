@@ -8,6 +8,7 @@ xlsx 의 Rf_dc/Rd_dc 는 XLSX_DC_BLOCKS/XLSX_DC_STYLE(검토자 2024 패키지 �
 from __future__ import annotations
 import csv, json, math, os
 from ..graph import step1_graph as G
+from . import reviewer_sheet as RS
 
 XLSX_NAME = "evidence.xlsx"
 
@@ -72,7 +73,11 @@ def dc_values(s, C, c: str) -> dict:
 
 
 def dc_blocks(s, C, c: str) -> list:
-    """XLSX_DC_BLOCKS 를 커브별로 치환한 블록 구조 [{title, rows:[{label, key, fmt, values}]}] — xlsx 작성기와 화면(/api/blocks)이 같은 함수를 쓴다."""
+    """블록 구조 [{title, rows:[{label, key, fmt, values}]}] — xlsx 작성기와 화면(/api/blocks)이 같은 함수를 쓴다.
+    검토자 수식 시트가 적용되는 실행(reviewer_sheet.applicable: 검토자 방식 상수 + 주간/월간 격자, XLSX_FORMULA_SHEETS)은 그 시트의 행(파이썬 모형 값)을,
+    아니면 XLSX_DC_BLOCKS(값 시트)를 돌려준다. 어느 쪽인지는 각 블록의 `orient`('rows' = 검토자 배치)로 화면이 안다."""
+    if C.XLSX_FORMULA_SHEETS and RS.applicable(s, C)[0]:
+        return RS.blocks(RS.params_from_state(s, C, c))
     m = C.RF_FREQ if c == "RF" else C.RD_FREQ
     rate = "RISK FREE RATE" if c == "RF" else "RISKY RATE"
     period = {1: "YEAR", 2: "HALF-YEAR", 4: "QUARTER", 12: "MONTH"}.get(m, f"1/{m}Y")
@@ -158,8 +163,13 @@ def write_xlsx(path: str, s, C):
     prov = [(k, json.dumps(v, ensure_ascii=False, default=str) if isinstance(v, (dict, list)) else v) for k, v in json.loads(G.canonical_json(s.provenance)).items()]
     rng["PROVENANCE"] = _write_table(ws["PROVENANCE"], ["field", "value"], prov)
     rng["CONVENTIONS"] = _write_table(ws["CONVENTIONS"], ["constant", "value"], [(k, json.dumps(v, ensure_ascii=False, default=str)) for k, v in sorted(C.items().items())])
+    formula_ok, formula_why = RS.applicable(s, C)
     for c, name in (("RF", "Rf_dc"), ("RD", "Rd_dc")):
-        ranges.update(_write_dc_sheet(ws[name], s, C, c))
+        if formula_ok and C.XLSX_FORMULA_SHEETS:  # 검토자 시트를 살아있는 수식·원본 서식으로(docs/REVIEWER_SHEET_SPEC.md)
+            ranges.update(RS.write_sheet(ws[name], wb, RS.params_from_state(s, C, c)))
+        else:  # 값 시트(XLSX_DC_BLOCKS); 사유를 B2 에 남긴다
+            ranges.update(_write_dc_sheet(ws[name], s, C, c))
+            ws[name]["B2"] = f"값 시트(수식 시트 미적용: {formula_why if not formula_ok else 'XLSX_FORMULA_SHEETS=False'})"
     rng["PAR_CHECK"] = _write_table(ws["PAR_CHECK"], C.XLSX_COLUMNS["PAR_CHECK"], [[r["curve"], r["t"], r["n"], r["price"], r["target"], r["residual"], r["residual_x_face"]] for c in C.CURVE_IDS for r in s.par_check.per_maturity[c]])
     fs_rows = [[c, r["step"], r["t"], r["prod_df_fwd"], r["df_spot"], r["diff_log"], r["diff_prod"]] for c in C.CURVE_IDS for r in (s.fwd_spot_check.rows.get(c, []) if isinstance(s.fwd_spot_check.rows, dict) else [])]
     rng["FWD_SPOT_CHECK"] = _write_table(ws["FWD_SPOT_CHECK"], C.XLSX_COLUMNS["FWD_SPOT_CHECK"], fs_rows)

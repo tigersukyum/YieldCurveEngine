@@ -32,7 +32,7 @@ NODES_IMPL = {nid: (ko, prefixes, _IMPL.get(nid, fn)) for nid, (ko, prefixes, fn
 SUPPORTED = {
     "BOOTSTRAP_MODE": ("interpolate_then_bootstrap",), "PRICE_MODE": ("par",), "INTERP_SPACE_PRE": ("ytm",),
     "INTERP_SPACE_GRID": ("spot_annual", "spot_continuous", "log_df"), "EXTRAP_LEFT": ("flat",), "EXTRAP_RIGHT": ("flat_forward", "flat_spot"),
-    "TREE_FWD_RULE": ("continuous_from_spot",), "NODE_DISCOUNT_CONV": ("3_continuous_fwd",), "DAYCOUNT": ("ACT/365", "30/360"),
+    "TREE_FWD_RULE": ("continuous_from_spot", "piecewise_quarter_step"), "NODE_DISCOUNT_CONV": ("3_continuous_fwd", "1_discrete_fwd"), "DAYCOUNT": ("ACT/365", "30/360"),
     "RF_SEED_3M": ("none",), "RF_REGRID_RULE": ("interp",), "COUPON_CONV": ("nominal_div_m", "effective_root"),
     "AI_ENABLED": (False,), "EXCEL_REPLICATE": (False,),
 }

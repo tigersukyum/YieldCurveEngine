@@ -8,6 +8,8 @@ from ..curve.compounding import rv
 
 
 def node_map_tree_grid(s, C):
+    if C.TREE_FWD_RULE == "piecewise_quarter_step" and (C.INTERP_METHOD, C.INTERP_SPACE_GRID) != ("linear", "log_df"):
+        raise NotImplementedError("piecewise_quarter_step 은 INTERP_METHOD=linear × INTERP_SPACE_GRID=log_df(분기 DF 사이 선도 일정)로만 구현됨")
     times = s.grid.tree.times
     finite, range_ok, mono, worst_rt = True, True, True, 0.0
     lo, hi = C.DF_RANGE
@@ -30,6 +32,9 @@ def node_map_tree_grid(s, C):
         knots = s.grid.knots[c]
         yc = YtmCurve(C.INTERP_METHOD_PRE, [k["t"] for k in knots], [k["ytm"] for k in knots], C.EPS_T)
         s.tree.ytm_on_grid[c] = rv([yc.at(t)[0] for t in times], times, f"nominal_m{m}")
+        # 표시용 현물(검토자 row12): 분기 연복리 현물의 선형보간(첫 마디 앞 평탄) — DEFAULT 에서는 spot_annual_on_grid 와 같다
+        cg_disp = CurveOnGrid("linear", "spot_annual", s.grid.boot_times[c], s.bootstrap.spot_pp[c], m, "flat", C.EXTRAP_RIGHT, C.EPS_T)
+        s.tree.spot_annual_interp_on_grid[c] = rv([cg_disp.at(t)["spot_annual"] for t in times], times, "annual_eff")
         s.tree.interp_method_used, s.tree.interp_space_used = cg.method, cg.space
     s.tree.df_finite, s.tree.df_range_ok, s.tree.df_monotone_ok = finite, range_ok, mono
     s.tree.knot_roundtrip_max_err = worst_rt
