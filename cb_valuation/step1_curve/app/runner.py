@@ -12,7 +12,10 @@ from ..nodes import NODES_IMPL, unsupported
 
 
 def profiles_info():
-    return [{"name": k, "description": v, "implemented": k in G.Constants.PROFILES_IMPLEMENTED} for k, v in G.Constants.PROFILE_DESCRIPTIONS.items()]
+    """프로필 목록. 화면은 visible(PROFILES_UI) 인 것만 label('선형 보간'/'PCHIP')로 보여준다; 나머지는 CLI 전용."""
+    ui = dict(G.Constants.PROFILES_UI)
+    return [{"name": k, "description": v, "implemented": k in G.Constants.PROFILES_IMPLEMENTED, "visible": k in ui, "label": ui.get(k, k)}
+            for k, v in G.Constants.PROFILE_DESCRIPTIONS.items()]
 
 
 def _now():

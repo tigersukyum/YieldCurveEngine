@@ -64,13 +64,14 @@ def _pow(x: float, e: float) -> float:
 
 
 # ----------------------------------------------------------------------------- 행 번호표(원본 배치 그대로)
-ROWS = {
+ROWS = {  # slope=PCHIP 마디 기울기(행 8, PCHIP 일 때만), h_seg/h_s = PCHIP 보조행(원본 마지막 행 뒤; PCHIP 일 때만)
     "RF": dict(idx=10, ytm=11, spot=12, fwd=13, qtitle=15, q=16, qw=17, qy=18, qc=19, qpp=20, qpb=21, qdf=22, qs=23, qsp=24, qsy=25, qfq=26, qfy=27, qmc=28,
-               mk=30, widx=31, ws=32, f1=33, f2=34, wf=35, pvf=36, mc1=37, mc2=38, last=39),
+               mk=30, widx=31, ws=32, f1=33, f2=34, wf=35, pvf=36, mc1=37, mc2=38, last=39, slope=8, h_seg=40, h_s=41),
     "RD": dict(idx=10, ytm=11, spot=12, fwd=13, qtitle=15, q=16, qw=17, qy=18, qpb=19, qdf=20, qs=21, qsp=22, qsy=23, qfq=24, qfy=25, qmc=26,
                mk=28, widx=29, ws=30, f1=31, f2=32, wf=33, wfy=34, mc1=35, mc2=36, pvf=37,
-               wbtitle=39, face=40, widx2=41, wc=42, wdf=43, wsum=44, wsp=45, wmc=46, wf1=47, wf2=48, wfw=49, wpvf=50, wmc1=51, wmc2=52, last=53),
+               wbtitle=39, face=40, widx2=41, wc=42, wdf=43, wsum=44, wsp=45, wmc=46, wf1=47, wf2=48, wfw=49, wpvf=50, wmc1=51, wmc2=52, last=53, slope=8, h_seg=54, h_s=55),
 }
+METHODS = ("linear", "pchip")  # 마디 YTM 보간(행 11): 선형 = 원본 수식, PCHIP = 행 8 기울기(reference/interp_ref.pchip_slopes 와 같은 식) + 보조행 + 3차 Hermite
 # 행 성격(서식 열 대응 규칙): fixed=열 그대로(≤R), tenor=테너 열, weekly=격자 스텝 열, quarterly=이표 격자 열
 _KINDS = {
     "RF": {**{r: "fixed" for r in (1, 2, 3, 8, 14, 39)}, **{r: "tenor" for r in (4, 5, 6, 7, 15, 29)}, **{r: "weekly" for r in (9, 10, 11, 12, 13, *range(30, 39))},
@@ -89,8 +90,13 @@ _BLOCKS = {
 class Params:
     """시트 하나의 입력: kind(RF|RD), P(연간 스텝 수), m(이표 주기/년), N(스텝 수), tenors[{label, years, step, ytm}], curve_date, header."""
 
-    def __init__(self, kind, P, m, N, tenors, curve_date=None, header="", face=FACE):
+    def __init__(self, kind, P, m, N, tenors, curve_date=None, header="", face=FACE, method="linear"):
         self.kind, self.P, self.m, self.N, self.tenors, self.curve_date, self.header, self.face = kind, int(P), int(m), int(N), tenors, curve_date, header, float(face)
+        self.method = method
+        if method not in METHODS:
+            raise ValueError(f"보간법 {method!r} 은 수식 시트에 없음(METHODS={METHODS})")
+        if method == "pchip" and len(tenors) < 3:
+            raise ValueError("PCHIP 수식 시트는 마디 3개 이상 필요")
         if self.P % self.m:
             raise ValueError(f"P={P} 가 m={m} 의 배수가 아님")
         self.spq = self.P // self.m
@@ -117,7 +123,7 @@ def applicable(s, C) -> tuple:
     """(적용 가능 여부, 사유). 판단 근거는 상수·격자 사실뿐(임계값 없음)."""
     if C.TREE_FWD_RULE != "piecewise_quarter_step" or C.NODE_DISCOUNT_CONV != "1_discrete_fwd":
         return False, f"검토자 방식 아님(TREE_FWD_RULE={C.TREE_FWD_RULE}, NODE_DISCOUNT_CONV={C.NODE_DISCOUNT_CONV})"
-    if C.INTERP_METHOD_PRE != "linear" or (C.INTERP_METHOD, C.INTERP_SPACE_GRID) != ("linear", "log_df"):
+    if C.INTERP_METHOD_PRE not in METHODS or (C.INTERP_METHOD, C.INTERP_SPACE_GRID) != ("linear", "log_df"):
         return False, f"보간 조합이 검토자 방식 아님({C.INTERP_METHOD_PRE}/{C.INTERP_METHOD}/{C.INTERP_SPACE_GRID})"
     step = s.provenance.grid_settings.step
     if step not in C.STEP_MODES:
@@ -158,7 +164,7 @@ def params_from_state(s, C, c: str) -> Params:
     cd = s.provenance.curve_date
     curve_date = datetime.fromisoformat(cd) if cd else None
     header = " · ".join(x for x in (s.provenance.valuation_date, s.run.curve_set_id, s.provenance.source_agency) if x)
-    return Params(c, P, m, int(s.grid.tree.N), tenors, curve_date, header, C.PAR_FACE if hasattr(C, "PAR_FACE") else FACE)
+    return Params(c, P, m, int(s.grid.tree.N), tenors, curve_date, header, C.PAR_FACE if hasattr(C, "PAR_FACE") else FACE, method=C.INTERP_METHOD_PRE)
 
 
 def build(s, C, c: str) -> Params:
@@ -194,10 +200,39 @@ def _interp_formula(p: Params, cl: str, r_idx: int) -> str:
             f"INDEX({rng6},{mt})+(INDEX({rng6},{mt}+1)-INDEX({rng6},{mt}))*({cl}${r_idx}-INDEX({rng4},{mt}))/(INDEX({rng4},{mt}+1)-INDEX({rng4},{mt}))))")
 
 
+def _pchip_slope_formula(p: Params, i: int) -> str:
+    """행 8: 마디 i(1-based)의 PCHIP 기울기 — reference/interp_ref.pchip_slopes 와 같은 식·같은 연산 순서(Fritsch–Carlson 조화평균, 끝점 3점식+형태 보존)."""
+    n = p.nT
+    X = lambda j: col(j + 2)
+    h = lambda a, b: f"({X(b)}$4-{X(a)}$4)"
+    mm = lambda a, b: f"(({X(b)}$6-{X(a)}$6)/({X(b)}$4-{X(a)}$4))"
+    if i == 1 or i == n:
+        if i == 1:
+            h0, h1, m0, m1 = h(1, 2), h(2, 3), mm(1, 2), mm(2, 3)
+        else:
+            h0, h1, m0, m1 = h(n - 1, n), h(n - 2, n - 1), mm(n - 1, n), mm(n - 2, n - 1)
+        d = f"(((2*{h0}+{h1})*{m0}-{h0}*{m1})/({h0}+{h1}))"
+        return f"=IF(SIGN({d})<>SIGN({m0}),0,IF(AND(SIGN({m0})<>SIGN({m1}),ABS({d})>3*ABS({m0})),3*{m0},{d}))"
+    hL, hR, mL, mR = h(i - 1, i), h(i, i + 1), mm(i - 1, i), mm(i, i + 1)
+    w1, w2 = f"(2*{hR}+{hL})", f"({hR}+2*{hL})"
+    return f"=IF(OR(SIGN({mL})<>SIGN({mR}),{mL}=0,{mR}=0),0,1/(({w1}/{mL}+{w2}/{mR})/({w1}+{w2})))"
+
+
+def _hermite_formula(p: Params, cl: str) -> str:
+    """행 11(PCHIP): 보조행 h_seg(구간 번호)·h_s(구간 내 위치 s)로 3차 Hermite — reference/interp_ref._Hermite._eval 과 같은 항 순서."""
+    R = p.rows; Lt = p.Lt
+    w, S, T = f"{cl}${R['idx']}", f"{cl}${R['h_seg']}", f"{cl}${R['h_s']}"
+    x4, y6, d8 = f"$C$4:${Lt}$4", f"$C$6:${Lt}$6", f"$C$8:${Lt}$8"
+    H = f"(INDEX({x4},{S}+1)-INDEX({x4},{S}))"
+    return (f"=IF({w}<=$C$4,$C$6,IF({w}>=${Lt}$4,${Lt}$6,"
+            f"(2*{T}^3-3*{T}^2+1)*INDEX({y6},{S})+({T}^3-2*{T}^2+{T})*{H}*INDEX({d8},{S})"
+            f"+(-2*{T}^3+3*{T}^2)*INDEX({y6},{S}+1)+({T}^3-{T}^2)*{H}*INDEX({d8},{S}+1)))")
+
+
 def cells(p: Params) -> dict:
     """{(row, col): 값 또는 '=수식'}. 열은 1-based(C=3)."""
     R, N, Nq, spq, P, m = p.rows, p.N, p.Nq, p.spq, p.P, p.m
-    Lw, Lq, Xc = p.Lw, p.Lq, p.Xc
+    Lw, Lq, Xc, Lt = p.Lw, p.Lq, p.Xc, p.Lt
     out = {}
     lab = labels(p)
     for r, text in lab.items():
@@ -205,17 +240,28 @@ def cells(p: Params) -> dict:
     out[(1, 4)] = p.header
     out[(5, 2)] = p.curve_date
     face_ref = "C$21" if p.kind == "RF" else "$C$40"   # 원본: Rf 는 행 21(PV OF BOND 상수), Rd 는 C40(주간 부트스트랩 액면)
+    pchip = p.method == "pchip"
     # 블록 1 테너
     for i, t in enumerate(p.tenors, start=1):
         c = i + 2; cl = col(c)
         out[(4, c)] = t["step"]; out[(5, c)] = t["label"]; out[(6, c)] = t["ytm"]
         out[(7, c)] = f"=INDEX($C${R['spot']}:${Lw}${R['spot']},{cl}$4)"
         out[(9, t["step"] + 2)] = _marker_label(t["years"])
+        if pchip:
+            out[(R["slope"], c)] = _pchip_slope_formula(p, i)
+    if pchip:
+        out[(R["slope"], 2)] = "PCHIP SLOPE (dY/dSTEP)"
+        out[(R["h_seg"], 2)] = "PCHIP SEGMENT"; out[(R["h_s"], 2)] = "PCHIP s = (STEP-x_i)/h"
     # 블록 2 격자
     for w in range(1, N + 1):
         c = w + 2; cl = col(c); pv = col(c - 1)
         out[(R["idx"], c)] = 1 if w == 1 else f"={pv}{R['idx']}+1"
-        out[(R["ytm"], c)] = _interp_formula(p, cl, R["idx"])
+        if pchip:
+            out[(R["h_seg"], c)] = f"=IFERROR(MATCH({cl}${R['idx']},$C$4:${Lt}$4,1),1)"
+            out[(R["h_s"], c)] = f"=IF({cl}${R['h_seg']}>={p.nT},0,({cl}${R['idx']}-INDEX($C$4:${Lt}$4,{cl}${R['h_seg']}))/(INDEX($C$4:${Lt}$4,{cl}${R['h_seg']}+1)-INDEX($C$4:${Lt}$4,{cl}${R['h_seg']})))"
+            out[(R["ytm"], c)] = _hermite_formula(p, cl)
+        else:
+            out[(R["ytm"], c)] = _interp_formula(p, cl, R["idx"])
         out[(R["spot"], c)] = f"=(1+{cl}{R['ws']})^{P}-1"
         q = -(-w // spq); Aq = col(spq * q + 2)
         if q == 1:
@@ -305,13 +351,26 @@ def evaluate(p: Params) -> dict:
     steps = [t["step"] for t in p.tenors]; ys = [t["ytm"] for t in p.tenors]
     V[4] = list(steps); V[5] = [t["label"] for t in p.tenors]; V[6] = list(ys)
 
-    def interp(w):
-        if w <= steps[0]:
-            return ys[0]
-        if w >= steps[-1]:
-            return ys[-1]
-        i = max(j for j in range(len(steps)) if steps[j] <= w)
-        return ys[i] + (ys[i + 1] - ys[i]) * (w - steps[i]) / (steps[i + 1] - steps[i])
+    if p.method == "pchip":  # 시트와 같은 x(스텝 단위)로 참조 구현을 그대로 평가 — 엔진(연 단위)과는 부동소수 잡음만 다르다
+        from ..reference import interp_ref as IR
+        xs = [float(x) for x in steps]
+        V[R["slope"]] = IR.pchip_slopes(xs, ys)
+        fh = IR.pchip(xs, ys)
+
+        def interp(w):
+            if w <= steps[0]:
+                return ys[0]
+            if w >= steps[-1]:
+                return ys[-1]
+            return fh(float(w))
+    else:
+        def interp(w):
+            if w <= steps[0]:
+                return ys[0]
+            if w >= steps[-1]:
+                return ys[-1]
+            i = max(j for j in range(len(steps)) if steps[j] <= w)
+            return ys[i] + (ys[i + 1] - ys[i]) * (w - steps[i]) / (steps[i + 1] - steps[i])
     idx = list(range(1, N + 1)); ytm = [interp(w) for w in idx]
     V[R["idx"]] = idx; V[R["ytm"]] = ytm
     # 이표 격자
@@ -527,6 +586,25 @@ def write_sheet(ws, wb, p: Params) -> dict:
                 cell.font, cell.fill, cell.border, cell.alignment, cell.number_format = font, fill, border, align, nf
             if v is not None:
                 cell.value = v
+    if p.method == "pchip":  # 원본 배치 밖의 행: 행 8 기울기(테너 행 6 서식), 보조행 2개(주 번호 행 10 서식) — 값·수식은 data 에 있다
+        R = p.rows
+        extra = [(R["slope"], "tenor", "6", "0.000E+00"), (R["h_seg"], "weekly", "10", "0"), (R["h_s"], "weekly", "10", "0.0000")]
+        for r, kind, src_row, nf_data in extra:
+            runs = L["rows"][src_row]["runs"]; lab_sid = _run_style(L["rows"]["11"]["runs"], 2)
+            ws.row_dimensions[r].height = L["default_row_height"]
+            for c in range(2, max_col + 1):
+                oc = _orig_col(kind, c, p)
+                sid = lab_sid if c == 2 else (_run_style(runs, oc) if oc else -1)
+                v = data.get((r, c))
+                if sid < 0 and v is None:
+                    continue
+                cell = ws.cell(r, c)
+                if sid >= 0:
+                    font, fill, border, align, nf = sty(sid)
+                    cell.font, cell.fill, cell.border, cell.alignment = font, fill, border, align
+                    cell.number_format = nf if c == 2 else nf_data
+                if v is not None:
+                    cell.value = v
     rng = {}
     for key, title_row, rows, kind in _BLOCKS[p.kind]:
         last = {"tenor": p.Lt, "quarterly": p.Lq, "weekly": p.Xc}[kind]
@@ -541,17 +619,18 @@ def blocks(p: Params) -> list:
     V = evaluate(p); lab = labels(p); R = p.rows
     sw = STEP_WORDS[p.P].title()
     # 시트에서 라벨이 없는 행(주 번호·B5 고시일·Rd 행 34·액면)은 화면에서만 설명 라벨을 붙인다(xlsx 는 원본 그대로)
-    screen_only = {5: (p.curve_date.date().isoformat() if p.curve_date else "curve date"), R["idx"]: f"{sw} no.", R["widx"]: f"{sw} no."}
+    screen_only = {5: (p.curve_date.date().isoformat() if p.curve_date else "curve date"), R["idx"]: f"{sw} no.", R["widx"]: f"{sw} no.", R["slope"]: "PCHIP SLOPE (dY/dSTEP)"}
     if p.kind == "RD":
         screen_only.update({R["widx2"]: f"{sw} no.", R["wfy"]: "FORWARD RATE - Yearly (grid, =(1+F)^P-1)", R["face"]: "FACE (PV OF BOND)"})
     out = []
     for bi, (key, title_row, rows, kind) in enumerate(_BLOCKS[p.kind], start=1):
         block = {"index": bi, "key": key, "title": lab.get(title_row, key), "orient": "rows", "rows": []}
+        rows = list(rows) + ([R["slope"]] if bi == 1 and p.method == "pchip" else [])
         for r in rows:
             vals = V.get(r)
             if vals is None:
                 continue
-            block["rows"].append({"label": lab.get(r) or screen_only.get(r, ""), "key": f"row{r}", "fmt": number_format_of(p, r), "values": list(vals),
-                                  "extra": V.get((r, "X"))})
+            block["rows"].append({"label": lab.get(r) or screen_only.get(r, ""), "key": f"row{r}", "fmt": "0.000E+00" if r == R["slope"] else number_format_of(p, r),
+                                  "values": list(vals), "extra": V.get((r, "X"))})
         out.append(block)
     return out

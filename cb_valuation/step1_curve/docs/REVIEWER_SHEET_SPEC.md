@@ -117,6 +117,18 @@
 | 검증 TRUE 셀(Rf C37·C38, Rd C35·C36·C51·C52) | 모두 TRUE | 모두 TRUE |
 | 예외 | Rf 행 20 AM 열(원본 이상치 2.8e-11), Rd TC50(원본 오래된 값 0.1549 vs PRODUCT 0.2555) | — |
 
+## 7. 앱의 보간법 선택(LINEAR / PCHIP)과 이표기간 (사용자 결정 2026-09-08)
+- 앱 '보간법' 드롭다운은 프로필 **LINEAR("선형 보간")·PCHIP** 두 개만 보여준다(`Constants.PROFILES_UI`). 둘 다 이 문서의 검토자 방식 수식 시트를 만들고, **국고채(RF)는 반기(RF_FREQ=2, 26주 이표기간), 회사채(RD)는 분기(RD_FREQ=4, 13주)** 로 부트스트랩한다.
+  RF 시트는 이표기간이 26주라 라벨이 `HALF-YEAR`, `HALF-YEARLY PAYMENT RATE`, `FORWARD Rate - Half-Yearly` 로 바뀌고(`_adapt`), 행 17 `=C16*26`, 행 19 `=C18/2`, 연환산 `^2`, 주간 선도 앵커는 26주 간격(`$AB$32`, `$BB$32`, …), 이표 격자 열은 20개(C~V), 테너 블록은 이표 격자 위 마디만(3M·9M 제외 — `Constants.knot_tenors`). Rd 시트는 원본과 같은 분기 구조.
+- 선택이 바꾸는 것은 **마디 YTM 보간(행 11)** 하나다(엔진 `INTERP_METHOD_PRE`). 이표기간 안 선도 일정(분기 DF 사이 log-linear)·이산 할인·검증 행은 두 선택 모두 같다.
+- **PCHIP 일 때 추가되는 행**(원본 배치 밖; xlsx 에도 수식으로 들어감):
+  - 행 8 `PCHIP SLOPE (dY/dSTEP)`: 마디별 기울기 d_k. 내부 마디 `=IF(OR(SIGN(δL)<>SIGN(δR),δL=0,δR=0),0,1/(((2hR+hL)/δL+(hR+2hL)/δR)/((2hR+hL)+(hR+2hL))))`,
+    끝 마디 `=IF(SIGN(d)<>SIGN(δ0),0,IF(AND(SIGN(δ0)<>SIGN(δ1),ABS(d)>3*ABS(δ0)),3*δ0,d))`, `d=((2h0+h1)δ0−h0δ1)/(h0+h1)` — `reference/interp_ref.pchip_slopes`(scipy PchipInterpolator 와 동일)와 같은 식·연산 순서(x 는 스텝 단위).
+  - 보조행 2개(Rf 40·41, Rd 54·55): `PCHIP SEGMENT` `=IFERROR(MATCH(w,$C$4:$L$4,1),1)`, `PCHIP s` `=(w−x_i)/(x_{i+1}−x_i)`(마지막 구간 뒤는 0).
+  - 행 11 `=IF(w<=x_1,y_1,IF(w>=x_n,y_n,(2s³−3s²+1)·y_i+(s³−2s²+s)·h·d_i+(−2s³+3s²)·y_{i+1}+(s³−s²)·h·d_{i+1}))` — `interp_ref._Hermite._eval` 과 같은 항 순서.
+  - 검증(`reference/verify_formula_sheet.py PCHIP`, Excel 재계산 vs 파이썬 모형): 행 8 ≤3.3e-19, 행 11 ≤2.8e-17, 나머지 행 ≤1.3e-14(10000 배율 행 1.8e-12). LINEAR 도 같은 도구로 확인.
+- 엔진과의 관계: 엔진은 연 단위 t 로, 시트는 스텝 단위로 PCHIP 을 평가한다(PCHIP 은 x 의 선형 변환에 불변) — 이표 격자 YTM(행 18)·DF 는 1e-12 안에서 일치(`tests/test_reviewer_sheet.py::TestInterpolationChoice`).
+
 ## 6. 엔진(state)과의 관계
 수식 시트는 state 값을 복사하지 않고 **입력(테너·YTM·고시일)만** 받아 Excel 이 다시 계산한다. 엔진의 REVIEWER_2024 결과와는 정의가 같아 분기 DF 는 2.2e-16, 격자 주간 선도는 ≤4e-10 안에서 일치한다(`tests/test_reviewer_sheet.py`; 선도의 차이는 엔진 격자 시각이 `T_ROUND_DIGITS` 로 반올림되어(1/52 → 0.01923077, 상대 4e-8) 생기는 것이고 시트는 정확한 1/13 지수를 쓴다).
 표시 정의가 다른 곳(원본 C열 명목 앵커, 행 12/32 의 주간복리 체인)은 시트 쪽 정의를 따르며 state 에는 쓰지 않는다. par 검증은 시트의 MODEL CHECK 행(수식)과 엔진의 PAR_CHECK 시트(값) 두 곳에 남는다.

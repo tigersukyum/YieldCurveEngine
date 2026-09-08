@@ -47,8 +47,11 @@ class Constants:
         "PCHIP_TREE": "DEFAULT 와 같은 부트스트랩, 트리 격자 보간만 PCHIP(g=r_c·t, log_df) — 선도곡선 연속·음의 선도 방지(보간법 변경 공시 필요)",
         "KICPA_1130": "모드 B(공시 마디 미지수 근찾기 + 중간 이표일 보간) + 관행적 가격 — 한국공인회계사회 실무사례 1130 준용",
         "REVIEWER_2024": "RF·RD 분기 부트스트랩(c=YTM/4, par 10000), 격자 위 분기 선도 일정(분기 DF 사이 log-linear), 이산 할인 1/(1+F), 표시용 현물은 분기 연복리 현물의 선형보간 — 2024 내부 검토자 Rf_dc/Rd_dc 시트와 같은 원리(수식 시트 출력용)",
+        "LINEAR": "검토자 방식(이표기간 안 선도 일정·이산 할인 1/(1+F)·Rf_dc/Rd_dc 수식 시트) + 국고채 반기(RF_FREQ 2)·회사채 분기(RD_FREQ 4) 부트스트랩 + 마디 YTM 선형 보간 — 앱 '보간법: 선형 보간'(사용자 결정 2026-09-08)",
+        "PCHIP": "검토자 방식(이표기간 안 선도 일정·이산 할인 1/(1+F)·Rf_dc/Rd_dc 수식 시트) + 국고채 반기·회사채 분기 부트스트랩 + 마디 YTM PCHIP 보간(시트 행 8 기울기·보조행) — 앱 '보간법: PCHIP'(사용자 결정 2026-09-08)",
         "EXCEL_REF": "엑셀 결함 재현(stale 3M 시드·원점 앵커·Empty→0·ceil_tenor) — 재조정(compare-excel) 전용, 증빙 헤드라인 금지",
     }
+    PROFILES_UI = (("LINEAR", "선형 보간"), ("PCHIP", "PCHIP"))  # 앱 '보간법' 드롭다운에 보이는 프로필과 표시 이름(사용자 결정 2026-09-08: 두 개만); 나머지 프로필은 CLI 전용
     # --- 입력 레이아웃
     TENOR_LABELS = ["3M", "6M", "9M", "1Y", "1.5Y", "2Y", "2.5Y", "3Y", "4Y", "5Y", "7Y", "10Y", "15Y", "20Y", "30Y", "50Y"]  # KIS-NET!D1:S1, BOOT!B3:Q3
     TENOR_YEARS = {"3M": 0.25, "6M": 0.5, "9M": 0.75, "1Y": 1.0, "1.5Y": 1.5, "2Y": 2.0, "2.5Y": 2.5, "3Y": 3.0,
@@ -82,7 +85,7 @@ class Constants:
     RF_REGRID_RULE = "interp"  # | "excel_midpoint_per_period" (BOOT!L11:L49 중점, EXCEL_REF 전용)
     MIN_KNOTS = 4  # PCHIP 끝점 3점식 요건 + 여유 (열린 결정)
     SENSITIVITY_COMBOS = [("linear", "spot_annual"), ("pchip", "log_df"), ("linear", "log_df"), ("pchip", "spot_annual"), ("linear", "spot_continuous")]  # 교차 민감도 대상(주 조합 제외) — CROSS_METHOD_DF_WARN 비교 모집단
-    PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE", "REVIEWER_2024")  # 앱 구현 범위 — 러너 사전 게이트·화면 비활성화 (KICPA_1130 모드 B·EXCEL_REF 결함 재현은 미구현)
+    PROFILES_IMPLEMENTED = ("DEFAULT", "PCHIP_TREE", "REVIEWER_2024", "LINEAR", "PCHIP")  # 앱 구현 범위 — 러너 사전 게이트·화면 비활성화 (KICPA_1130 모드 B·EXCEL_REF 결함 재현은 미구현)
     BLOCK_OF_ISSUANCE = {"사모": "사모무보증", "공모": "공모무보증"}  # 발행형태 → KIS-NET 고시 블록(B39 공모무보증 / B54 사모무보증), 감사인 Q13
     RATING_ORDER = ["AAA", "AA+", "AA0", "AA-", "A+", "A0", "A-", "BBB+", "BBB0", "BBB-", "BB+", "BB0", "BB-", "B+", "B0", "B-"]  # KIS-NET 회사채 등급 서열(블록 분할 기준: 서열이 되돌아가면 새 블록); 부호 없는 등급은 "0" 으로 정규화
     NOTCH_DEFAULT = 0  # 한공회 §3.9.1 노칭 (≠0 → NOTCH_APPLIED 승인)
@@ -189,6 +192,11 @@ class Constants:
         "KICPA_1130": {"BOOTSTRAP_MODE": "bootstrap_with_interpolation", "PRICE_MODE": "kicpa_conventional",
                        "INTERP_SPACE_GRID": "spot_annual", "CURVE_HORIZON_Y": 50.0},
         "PCHIP_TREE": {"INTERP_METHOD": "pchip", "INTERP_SPACE_GRID": "log_df"},
+        # 앱 '보간법' 두 선택지(사용자 결정 2026-09-08): 검토자 방식 그대로(RF_FREQ 2·RD_FREQ 4 는 기본값), 마디 YTM 보간(INTERP_METHOD_PRE)만 다르다
+        "LINEAR": {"TREE_GRID": {"mode": "weekly", "N": None, "dt_weekly": 1.0 / 52.0}, "INTERP_METHOD_PRE": "linear", "INTERP_METHOD": "linear", "INTERP_SPACE_GRID": "log_df",
+                   "TREE_FWD_RULE": "piecewise_quarter_step", "EXTRAP_LEFT": "flat", "NODE_DISCOUNT_CONV": "1_discrete_fwd"},
+        "PCHIP": {"TREE_GRID": {"mode": "weekly", "N": None, "dt_weekly": 1.0 / 52.0}, "INTERP_METHOD_PRE": "pchip", "INTERP_METHOD": "linear", "INTERP_SPACE_GRID": "log_df",
+                  "TREE_FWD_RULE": "piecewise_quarter_step", "EXTRAP_LEFT": "flat", "NODE_DISCOUNT_CONV": "1_discrete_fwd"},
     }
 
     @classmethod

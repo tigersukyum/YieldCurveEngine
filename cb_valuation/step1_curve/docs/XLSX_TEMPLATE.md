@@ -2,7 +2,7 @@
 
 원천: `Constants.XLSX_REQUIRED / XLSX_TEMPLATE / XLSX_FORMULA_SHEETS / XLSX_SHEETS / XLSX_DC_STYLE / XLSX_DC_BLOCKS / XLSX_COLUMNS`(`graph/step1_graph.py`; 표는 GRAPH_SPEC §10 에 자동 생성). 서식의 출처는 내부 검토자 패키지 `8521_평가보고서 검토자의 검토요구사항_Call Option Valuation_KBI metal_2024.xlsx` 의 `Rf_dc`(B1:TC38)·`Rd_dc`(A1:TD53) 시트를 openpyxl 로 읽어 확인한 값이다(2026-09-07; 원본은 `ref/` 커밋 제외, 셀 값은 fixture C `tests/fixtures/reviewer_curves_20241231.json`).
 
-**2026-09-08 사용자 결정(우선)**: `Rf_dc`/`Rd_dc` 는 검토자 시트를 **그대로 — 살아있는 엑셀 수식 + 원본 서식 —** 재현한다(`XLSX_FORMULA_SHEETS=True`, `io/reviewer_sheet.py`, 명세 `docs/REVIEWER_SHEET_SPEC.md`). par 검증은 그 시트의 MODEL CHECK 행(수식)이다. 적용 조건은 `reviewer_sheet.applicable`(검토자 방식 상수 = 프로필 REVIEWER_2024 + 주간/월간 격자 + 테너·이표기간이 스텝의 정수배). 조건 밖(DEFAULT·PCHIP_TREE, 일간 격자)에서는 아래 §3~§4 의 **값 시트**(XLSX_DC_BLOCKS)를 쓰고 B2 에 사유를 적는다. 나머지 시트(§2)는 두 경우 모두 같다.
+**2026-09-08 사용자 결정(우선)**: `Rf_dc`/`Rd_dc` 는 검토자 시트를 **그대로 — 살아있는 엑셀 수식 + 원본 서식 —** 재현한다(`XLSX_FORMULA_SHEETS=True`, `io/reviewer_sheet.py`, 명세 `docs/REVIEWER_SHEET_SPEC.md`). par 검증은 그 시트의 MODEL CHECK 행(수식)이다. 적용 조건은 `reviewer_sheet.applicable`(검토자 방식 상수 = 프로필 LINEAR·PCHIP(앱 '보간법' 두 선택지, 국고채 반기·회사채 분기)·REVIEWER_2024 + 주간/월간 격자 + 테너·이표기간이 스텝의 정수배; 마디 YTM 보간은 linear 또는 pchip — REVIEWER_SHEET_SPEC §7). 조건 밖(DEFAULT·PCHIP_TREE, 일간 격자)에서는 아래 §3~§4 의 **값 시트**(XLSX_DC_BLOCKS)를 쓰고 B2 에 사유를 적는다. 나머지 시트(§2)는 두 경우 모두 같다.
 
 ## 1. 왜 xlsx 가 필수인가
 - 감사인 Q1 "파일/탭/셀 위치와 함께 제출" — `checklist_map.json` 의 위치 문자열 `<file>!<sheet>!<range>` 가 xlsx 시트·셀을 가리킨다.

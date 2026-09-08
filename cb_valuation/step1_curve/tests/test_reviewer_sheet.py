@@ -204,3 +204,48 @@ class TestWriteXlsx(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestInterpolationChoice(unittest.TestCase):
+    """앱 '보간법' 두 선택지(프로필 LINEAR/PCHIP, 사용자 결정 2026-09-08): 검토자 방식 수식 시트 + 국고채 반기(RF_FREQ 2)·회사채 분기(RD_FREQ 4)."""
+
+    def test_linear_and_pchip_profiles(self):
+        from openpyxl import load_workbook
+        from cb_valuation.step1_curve.io.evidence_writer import export_xlsx, dc_blocks
+        for profile in ("LINEAR", "PCHIP"):
+            base = tempfile.mkdtemp(prefix="cb_rs_")
+            try:
+                s, C = drive_to_done(base, profile, step="weekly", horizon_years=10)
+                self.assertEqual(s.run.status, "done", s.result.fail_reason)
+                self.assertEqual((C.RF_FREQ, C.RD_FREQ), (2, 4))
+                ok, why = RS.applicable(s, C); self.assertTrue(ok, why)
+                for c in ("RF", "RD"):
+                    p = RS.params_from_state(s, C, c); V = RS.evaluate(p); R = p.rows
+                    self.assertEqual(p.method, "pchip" if profile == "PCHIP" else "linear")
+                    self.assertEqual(p.m, 2 if c == "RF" else 4)
+                    self.assertLess(max(abs(a - b) for a, b in zip(V[R["qdf"]], s.bootstrap.df[c])), 1e-12)  # 이표 격자 DF = 엔진
+                    self.assertLess(max(abs(a - b) for a, b in zip(V[R["qy"]], s.interp.ytm_on_coupon_grid[c]["values"])), 1e-12)  # 행 18 = 엔진 이표격자 YTM(선형/PCHIP)
+                    self.assertLess(max(abs(a - b) for a, b in zip(V[R["ytm"]], s.tree.ytm_on_grid[c]["values"][1:])), 1e-9)  # 행 11(격자 시각 반올림 차이)
+                    self.assertIs(V[R["mc1"]][0], True); self.assertIs(V[R["mc2"]][0], True)
+                path = export_xlsx(s, C, base); wb = load_workbook(path); rf, rd = wb["Rf_dc"], wb["Rd_dc"]
+                self.assertEqual(rf["B16"].value, "HALF-YEAR"); self.assertEqual(rf["C17"].value, "=C16*26"); self.assertEqual(rf["C19"].value, "=C18/2")
+                self.assertEqual(rf["B19"].value, "HALF-YEARLY PAYMENT RATE"); self.assertEqual(rf["C13"].value, "=((1+$AB$32)^26)^(1/26)-1")
+                self.assertEqual(rd["B16"].value, "QUARTER"); self.assertEqual(rd["C17"].value, "=C16*13"); self.assertEqual(rd["C13"].value, "=((1+$O$30)^13)^(1/13)-1")
+                if profile == "PCHIP":
+                    self.assertEqual(rf["B8"].value, "PCHIP SLOPE (dY/dSTEP)")
+                    self.assertTrue(str(rf["C8"].value).startswith("=IF(SIGN(")); self.assertTrue(str(rf["D8"].value).startswith("=IF(OR(SIGN("))
+                    self.assertTrue(str(rf["C11"].value).startswith("=IF(C$10<=$C$4,$C$6,IF(C$10>=$L$4,$L$6,(2*C$41^3"))
+                    self.assertEqual(rf["C40"].value, "=IFERROR(MATCH(C$10,$C$4:$L$4,1),1)"); self.assertEqual(rd["B54"].value, "PCHIP SEGMENT")
+                    self.assertIn("row8", [r["key"] for r in dc_blocks(s, C, "RF")[0]["rows"]])
+                else:
+                    self.assertIsNone(rf["B8"].value); self.assertIsNone(rf["C40"].value)
+                    self.assertTrue(str(rf["C11"].value).startswith("=IF(C$10<=$C$4,$C$6,IF(C$10>=$L$4,$L$6,INDEX("))
+            finally:
+                shutil.rmtree(base, ignore_errors=True)
+
+    def test_ui_profiles(self):
+        from cb_valuation.step1_curve.app.runner import profiles_info
+        vis = [p for p in profiles_info() if p["visible"]]
+        self.assertEqual([p["name"] for p in vis], ["LINEAR", "PCHIP"])
+        self.assertEqual([p["label"] for p in vis], ["선형 보간", "PCHIP"])
+        self.assertTrue(all(p["implemented"] for p in vis))
