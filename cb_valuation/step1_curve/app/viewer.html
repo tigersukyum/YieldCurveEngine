@@ -118,7 +118,7 @@
     <span id="b-node">노드 —</span>
     <span id="b-run">run —</span>
     <span id="b-status" class="callout">상태: 대기</span>
-    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08d</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08e</span>
   </span>
 </div>
 <div id="init-error"></div>
@@ -164,16 +164,6 @@
       </div>
     </div>
 
-    <div class="card">
-      <div class="t"><span>③ 출처 증빙 (선택)</span><span class="help">감사인 질의 Q12 — 사용 행이 보이는 평가사 화면 캡처</span></div>
-      <div class="b lime">
-        <div id="drop-cap" class="drop">캡처 파일(이미지 또는 PDF)을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요<br>
-          <input type="file" id="f-capfile" accept="image/*,.pdf"></div>
-        <div class="help">없으면 승인 단계에서 CAPTURE_MISSING 코드를 확인(ack)하고 진행합니다.</div>
-        <div id="cap-info" class="note">캡처 없음</div>
-      </div>
-    </div>
-
     <div class="cta">
       <div><b>실행</b>매트릭스를 적재하고 라벨을 해석한 뒤 <u>입력 승인</u>에서 멈춥니다. 오른쪽 그래프에서 현재 노드를 확인하세요.</div>
       <button class="btn primary big" id="btn-run">실행 ▸</button>
@@ -214,7 +204,7 @@
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08d";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08e";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
@@ -353,10 +343,7 @@ async function onMatrixFile(file) {
   try { const j = await uploadFile(file, "matrix"); $("f-matrix_text").value = j.matrix_text; setPreview(j.matrix_text, j.preview, "파일 " + file.name); }
   catch (e) { $("matrix-info").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
 }
-async function onCaptureFile(file) {
-  try { const j = await uploadFile(file, "capture"); CAPTURE_PATH = j.capture_path; $("cap-info").innerHTML = `<span class="ok">캡처 저장: ${esc(j.capture_path)} (${j.bytes} bytes)</span>`; }
-  catch (e) { $("cap-info").innerHTML = `<span class="err">${esc(e.message)}</span>`; }
-}
+// 출처 캡처 업로드 칸은 화면에서 제거(사용자 결정 2026-09-08). capture_path 는 null 로 보내며 승인 단계에서 CAPTURE_MISSING 을 확인한다. 서버 /api/upload(kind=capture) 는 남아 있다.
 function wireDrop(zoneId, inputId, handler) {
   const z = $(zoneId), inp = $(inputId);
   ["dragenter", "dragover"].forEach(ev => z.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); z.classList.add("over"); }));
@@ -505,7 +492,6 @@ function showInitError(msg) {
 }
 function wireUI() {  // 서버 응답과 무관하게 먼저 붙인다(드롭존·버튼)
   wireDrop("drop", "f-file", onMatrixFile);
-  wireDrop("drop-cap", "f-capfile", onCaptureFile);
   $("btn-paste").onclick = () => { $("paste-box").hidden = !$("paste-box").hidden; };
   $("btn-parse").onclick = parsePasted; $("btn-run").onclick = runApp;
 }
