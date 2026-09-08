@@ -82,9 +82,11 @@ try:
     t0 = time.time()
     print("boot:", ev(ws, "window.CB_BOOT.then(() => 'ok')"), f"{time.time() - t0:.1f}s")
     print("version/options:", ev(ws, "JSON.stringify({v: VIEWER_VERSION, opts: [...document.querySelectorAll('#f-profile option')].map(o => o.textContent), err: document.getElementById('init-error').textContent, boot: !!document.getElementById('cb-boot')})"))
-    csv = open("cb_valuation/step1_curve/tests/fixtures/kisnet_matrix_20251231.csv", encoding="utf-8-sig").read()
+    # 업로드: 사용자가 평가사 파일을 올리는 것과 같은 경로(파일 → base64 → /api/upload → 파서). E2E_MATRIX 에 xlsx/xlsm/csv 경로를 주면 그 파일로, 없으면 fixture A csv 로.
+    mpath = os.environ.get("E2E_MATRIX") or "cb_valuation/step1_curve/tests/fixtures/kisnet_matrix_20251231.csv"
+    mb64 = base64.b64encode(open(mpath, "rb").read()).decode(); mname = os.path.basename(mpath)
     t0 = time.time()
-    print("upload:", ev(ws, "(async () => { await onMatrixFile(new File([" + json.dumps(csv) + "], 'kisnet.csv')); return document.getElementById('matrix-info').textContent.slice(0, 80) + ' | rf=' + document.getElementById('f-rf').value + ' rd=' + document.getElementById('f-rd').value; })()"), f"{time.time() - t0:.1f}s")
+    print("upload:", mname, ev(ws, "(async () => { const bin = atob(" + json.dumps(mb64) + "); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); await onMatrixFile(new File([arr], " + json.dumps(mname) + ")); return document.getElementById('matrix-info').textContent.slice(0, 80) + ' | rf=' + document.getElementById('f-rf').value + ' rd=' + document.getElementById('f-rd').value; })()"), f"{time.time() - t0:.1f}s")
     ev(ws, "(() => { const $ = id => document.getElementById(id); $('f-profile').value = 'PCHIP'; $('f-valuation_date').value = '2025-12-31'; $('f-curve_date').value = '2025-12-31'; $('f-curve_set_id').value = 'WEB'; $('f-operator').value = '테스터'; return 'set'; })()", await_promise=False)
     t0 = time.time()
     print("run:", ev(ws, "runApp().then(() => STATE.run.status + ' @ ' + STATE.run.paused_at_node + ' err=' + document.getElementById('run-error').textContent)"), f"{time.time() - t0:.1f}s")
