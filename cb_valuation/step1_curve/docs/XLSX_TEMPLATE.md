@@ -12,7 +12,7 @@
 
 ## 2. 통합문서 구조 (`XLSX_SHEETS` 순서 고정)
 INPUT_RAW · ROWS_USED · PROVENANCE · CONVENTIONS · **Rf_dc** · **Rd_dc** · PAR_CHECK · FWD_SPOT_CHECK · SENSITIVITY · HEADLINE · FLAGS · APPROVALS · RUN_PATH
-- 열 지향 시트(PAR_CHECK, FWD_SPOT_CHECK, RUN_PATH, APPROVALS …)는 `XLSX_COLUMNS` 의 헤더를 1행에 쓴다(basis 라벨 포함).
+- 열 지향 시트(FWD_SPOT_CHECK, RUN_PATH, APPROVALS …)는 `XLSX_COLUMNS` 의 헤더를 1행에 쓴다(basis 라벨 포함). **PAR_CHECK** 는 수식 시트가 적용될 때 검토자 FY25 '검증' 시트의 Par 검증 블록 배치(국고채 6개월·회사채 3개월 표, Rf_dc/Rd_dc 에서 HLOOKUP, REVIEWER_SHEET_SPEC §8)로 쓰고, 아니면 종전 열 지향 표(`XLSX_COLUMNS["PAR_CHECK"]`)로 쓴다.
 - `Rf_dc`/`Rd_dc` 는 **행 지향**(검토자 배치): 라벨은 B열, 데이터는 C열부터 오른쪽으로, 블록 사이 빈 행 1개.
 
 ## 3. Rf_dc / Rd_dc 값 시트 서식 (`XLSX_DC_STYLE`; 수식 시트 미적용 시에만)

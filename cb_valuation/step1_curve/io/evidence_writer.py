@@ -127,6 +127,71 @@ def _write_dc_sheet(ws, s, C, c: str) -> dict:
     return ranges
 
 
+PAR_CHECK_LAYOUT = {  # 검토자 FY25 패키지 '검증' 시트 B13:I29 'Par 검증' 블록의 배치·서식(값 없음): 열 B 라벨, C Date, D/E 일수계산, F/G Rate, H/I Par 검증
+    "width_B": 28.09765625, "width_C": 13.8984375, "font": "맑은 고딕", "size": 11, "header_tint": -0.0499893185216834,
+    "nf_date": "mm-dd-yy", "nf_act": "0.0000", "nf_pct": "0.00%;[Red]\\-0.00%;\\-", "nf_check": "0.00",
+    "tables": (("RF", "국고채", "Rf_dc"), ("RD", "회사채", "Rd_dc")),
+}
+
+
+def _write_par_check_formula(ws, s, C, params: dict) -> str:
+    """PAR_CHECK 시트를 검토자 '검증' 시트의 Par 검증 블록처럼: 국고채(이자 6개월)·회사채(이자 3개월) 표 2개, 행 수 = CURVE_HORIZON_Y × m(산출 기간 최대),
+    Date = 평가일부터 EOMONTH 체인, 30/360·Act/365F 일수계산, YTM·현물은 Rf_dc/Rd_dc 이표 격자(행 16 기간번호 → 행 18 YTM, DF 행)에서 HLOOKUP,
+    Par 검증 H = YTM 항등식(Σ c/m /(1+y/m)^(t·m) + 1/(1+y/m)^(t·m) = 1), I = 현물 DF 재가격(Σ c/m·(1+g_k)^−t_k + (1+g_n)^−t_n = 1; g = (1/DF)^(1/t)−1).
+    시트 범위 밖(산출 기간 초과) 행은 IFERROR → 0 이라 검증값 1 로 표시된다(원본 패키지와 같은 동작). 반환: 국고채 표 범위(cell_map C36)."""
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, Color
+    from datetime import datetime
+    L = PAR_CHECK_LAYOUT
+    thin = Side(style="thin")
+    B_all = Border(left=thin, right=thin, top=thin, bottom=thin); B_lr = Border(left=thin, right=thin)
+    B_lrb = Border(left=thin, right=thin, bottom=thin); B_rtb = Border(right=thin, top=thin, bottom=thin)
+    F = Font(name=L["font"], size=L["size"]); FB = Font(name=L["font"], size=L["size"], bold=True)
+    gray = PatternFill(patternType="solid", fgColor=Color(theme=0, tint=L["header_tint"]))
+    center = Alignment(horizontal="center")
+    ws.column_dimensions["B"].width = L["width_B"]; ws.column_dimensions["C"].width = L["width_C"]
+    vd = datetime.fromisoformat(s.provenance.valuation_date)
+
+    def put(r, c, v=None, font=F, fill=None, border=None, nf=None, align=None):
+        cell = ws.cell(r, c)
+        if v is not None:
+            cell.value = v
+        cell.font = font
+        if fill is not None: cell.fill = fill
+        if border is not None: cell.border = border
+        if nf is not None: cell.number_format = nf
+        if align is not None: cell.alignment = align
+        return cell
+    r = 2; first_range = None
+    for cid, name, sheet in L["tables"]:
+        p = params[cid]; m = p.m; months = 12 // m; n_rows = int(round(C.CURVE_HORIZON_Y * m)); Lq = p.Lq
+        df_row = p.rows["qdf"]; ytm_row = p.rows["qy"]; idx_row = p.rows["q"]
+        put(r, 2, f"Par 검증 - {name} (이자지급 {months}개월, {sheet})", font=FB)
+        hdr, base, first = r + 1, r + 2, r + 3
+        for c_i, text in ((3, "Date"), (4, "Daycount convention"), (6, "Rate"), (8, "Par 검증")):
+            put(hdr, c_i, text, fill=gray, border=B_all, align=center)
+        for c_i in (5, 7, 9):
+            put(hdr, c_i, border=B_rtb)
+        put(base, 2, "평가일", font=FB, fill=gray, border=B_all, align=center)
+        put(base, 3, vd, font=FB, fill=gray, border=B_rtb, nf=L["nf_date"], align=center)
+        for c_i, text in ((4, "30/360"), (5, "Act/365F"), (6, "YTM"), (7, "Spot"), (8, "1확인")):
+            put(base, c_i, text, font=FB, fill=gray, border=B_all, align=center)
+        put(base, 9, border=B_rtb)
+        for k in range(1, n_rows + 1):
+            rr = first + k - 1; prev = base if k == 1 else rr - 1
+            put(rr, 2, "쿠폰지급일" if k == 1 else None, border=B_all if k == 1 else (B_lrb if k == n_rows else B_lr), align=center if k == 1 else None)
+            put(rr, 3, f"=EOMONTH(C{prev},{months})", border=B_all, nf=L["nf_date"])
+            put(rr, 4, f"=YEARFRAC($C${base},C{rr},0)", border=B_all)
+            put(rr, 5, f"=(C{rr}-$C${base})/365", border=B_all, nf=L["nf_act"])
+            put(rr, 6, f"=IFERROR(HLOOKUP($D{rr}*{m},{sheet}!$C${idx_row}:${Lq}${ytm_row},{ytm_row - idx_row + 1},FALSE),0)", border=B_all, nf=L["nf_pct"])
+            put(rr, 7, f"=IFERROR((1/HLOOKUP($D{rr}*{m},{sheet}!$C${idx_row}:${Lq}${df_row},{df_row - idx_row + 1},FALSE))^(1/$D{rr})-1,0)", border=B_all, nf=L["nf_pct"])
+            put(rr, 8, f"=SUMPRODUCT(($F{rr}/{m})/(1+$F{rr}/{m})^($D${first}:D{rr}*{m}))+1/(1+$F{rr}/{m})^(D{rr}*{m})", border=B_all, nf=L["nf_check"])
+            put(rr, 9, f"=SUMPRODUCT(($F{rr}/{m})/(1+$G${first}:G{rr})^($D${first}:D{rr}))+1/(1+G{rr})^D{rr}", border=B_all, nf=L["nf_check"])
+        rng = f"B{r}:I{first + n_rows - 1}"
+        first_range = first_range or rng
+        r = first + n_rows + 2
+    return first_range
+
+
 def _write_table(ws, header, rows):
     from openpyxl.styles import Font
     for j, h in enumerate(header, start=1):
@@ -164,13 +229,18 @@ def write_xlsx(path: str, s, C):
     rng["PROVENANCE"] = _write_table(ws["PROVENANCE"], ["field", "value"], prov)
     rng["CONVENTIONS"] = _write_table(ws["CONVENTIONS"], ["constant", "value"], [(k, json.dumps(v, ensure_ascii=False, default=str)) for k, v in sorted(C.items().items())])
     formula_ok, formula_why = RS.applicable(s, C)
+    use_formula = formula_ok and C.XLSX_FORMULA_SHEETS
+    params = {c: RS.params_from_state(s, C, c) for c in C.CURVE_IDS} if use_formula else {}
     for c, name in (("RF", "Rf_dc"), ("RD", "Rd_dc")):
-        if formula_ok and C.XLSX_FORMULA_SHEETS:  # 검토자 시트를 살아있는 수식·원본 서식으로(docs/REVIEWER_SHEET_SPEC.md)
-            ranges.update(RS.write_sheet(ws[name], wb, RS.params_from_state(s, C, c)))
+        if use_formula:  # 검토자 시트를 살아있는 수식·원본 서식으로(docs/REVIEWER_SHEET_SPEC.md)
+            ranges.update(RS.write_sheet(ws[name], wb, params[c]))
         else:  # 값 시트(XLSX_DC_BLOCKS); 사유를 B2 에 남긴다
             ranges.update(_write_dc_sheet(ws[name], s, C, c))
             ws[name]["B2"] = f"값 시트(수식 시트 미적용: {formula_why if not formula_ok else 'XLSX_FORMULA_SHEETS=False'})"
-    rng["PAR_CHECK"] = _write_table(ws["PAR_CHECK"], C.XLSX_COLUMNS["PAR_CHECK"], [[r["curve"], r["t"], r["n"], r["price"], r["target"], r["residual"], r["residual_x_face"]] for c in C.CURVE_IDS for r in s.par_check.per_maturity[c]])
+    if use_formula:  # 검토자 '검증' 시트의 Par 검증 블록 배치·서식으로, Rf_dc/Rd_dc 에서 수식으로 가져와 검증(사용자 요청 2026-09-08)
+        rng["PAR_CHECK"] = _write_par_check_formula(ws["PAR_CHECK"], s, C, params)
+    else:
+        rng["PAR_CHECK"] = _write_table(ws["PAR_CHECK"], C.XLSX_COLUMNS["PAR_CHECK"], [[r["curve"], r["t"], r["n"], r["price"], r["target"], r["residual"], r["residual_x_face"]] for c in C.CURVE_IDS for r in s.par_check.per_maturity[c]])
     fs_rows = [[c, r["step"], r["t"], r["prod_df_fwd"], r["df_spot"], r["diff_log"], r["diff_prod"]] for c in C.CURVE_IDS for r in (s.fwd_spot_check.rows.get(c, []) if isinstance(s.fwd_spot_check.rows, dict) else [])]
     rng["FWD_SPOT_CHECK"] = _write_table(ws["FWD_SPOT_CHECK"], C.XLSX_COLUMNS["FWD_SPOT_CHECK"], fs_rows)
     rng["SENSITIVITY"] = _write_table(ws["SENSITIVITY"], ["method", "space", "curve", "max_rel_df_diff", "note"], [[r["method"], r["space"], r["curve"], r["max_rel_df_diff"], r.get("note")] for r in s.sensitivity.table] + [["freq_alt", "", c, json.dumps(v, ensure_ascii=False), ""] for c, v in dict(s.sensitivity.freq_alt).items()])

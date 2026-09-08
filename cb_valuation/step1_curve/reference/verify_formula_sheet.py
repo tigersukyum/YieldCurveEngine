@@ -55,6 +55,17 @@ def main(argv):
                     print(f"r{r:>2} {str(ws.cell(r, 2).value)[:30]!s:32} n={n:>3} 모형-Excel max={mx:.3e}")
                 for e in errs[:5]:
                     print("   ", e)
+        pc = wb["PAR_CHECK"]
+        for r0, name in ((2, "국고채"), (None, "회사채")):
+            if r0 is None:
+                r0 = next(r for r in range(3, pc.max_row + 1) if str(pc.cell(r, 2).value or "").startswith("Par 검증 - 회사채"))
+            rows = [r for r in range(r0 + 3, pc.max_row + 1) if isinstance(pc.cell(r, 6).value, (int, float)) and pc.cell(r, 6).value != 0 and not (isinstance(pc.cell(r, 3).value, str))]
+            if not rows:
+                print(f"PAR_CHECK {name}: 값 없음 (r0={r0})"); continue
+            hs = [abs(pc.cell(r, 8).value - 1) for r in rows if isinstance(pc.cell(r, 8).value, (int, float))]
+            is_ = [abs(pc.cell(r, 9).value - 1) for r in rows if isinstance(pc.cell(r, 9).value, (int, float))]
+            zero = [r for r in range(r0 + 3, pc.max_row + 1) if pc.cell(r, 6).value == 0 and isinstance(pc.cell(r, 3).value, (int, float))]
+            print(f"PAR_CHECK {name}: 행 {rows[0]}~{rows[-1]} ({len(rows)}개 값 있음, {len(zero)}개 산출 기간 밖) | max|H-1|={max(hs):.2e} max|I-1|={max(is_):.2e} | D 첫/끝 {pc.cell(rows[0], 4).value}/{pc.cell(rows[-1], 4).value}")
         print("workbook", path, "| overall max |모형-Excel| =", f"{worst:.3e}")
         keep = os.path.join(os.getcwd(), "exports", f"verify_{profile}_{step}.xlsx")
         os.makedirs(os.path.dirname(keep), exist_ok=True); shutil.copy(path, keep); print("copied to", keep)

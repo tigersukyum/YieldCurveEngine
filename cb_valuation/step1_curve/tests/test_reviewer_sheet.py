@@ -82,7 +82,7 @@ class TestFormulas(unittest.TestCase):
         self.assertEqual(c[(32, 15)], "=(1/C22)^(1/O31)-1")  # 분기말 앵커
         self.assertEqual(c[(32, 4)], "=(D34*D33)^(1/D31)-1")
         self.assertEqual(c[(32, 523)], "=1/(1+TB32)^TB31"); self.assertEqual(c[(36, 523)], "=PRODUCT(C36:TB36)")
-        self.assertEqual(c[(12, 3)], "=(1+C32)^52-1"); self.assertEqual(c[(7, 3)], "=INDEX($C$12:$TB$12,C$4)")
+        self.assertEqual(c[(12, 3)], "=(1+C32)^52-1"); self.assertEqual(c[(7, 3)], '=IFERROR(INDEX($C$12:$TB$12,C$4),"")')  # 산출 기간 밖 테너는 빈칸
         self.assertEqual(c[(25, 3)], "=C18"); self.assertEqual(c[(25, 4)], "=(1+D24)^4-1")
         self.assertEqual(c[(21, 3)], 10000); self.assertEqual(c[(23, 3)], 0); self.assertEqual(c[(34, 3)], 1)
         self.assertTrue(c[(11, 3)].startswith("=IF(C$10<=$C$4,$C$6,IF(C$10>=$N$4,$N$6,INDEX($C$6:$N$6,MATCH(C$10,$C$4:$N$4,1))"))
@@ -249,3 +249,37 @@ class TestInterpolationChoice(unittest.TestCase):
         self.assertEqual([p["name"] for p in vis], ["LINEAR", "PCHIP"])
         self.assertEqual([p["label"] for p in vis], ["선형 보간", "PCHIP"])
         self.assertTrue(all(p["implemented"] for p in vis))
+
+
+class TestParCheckSheet(unittest.TestCase):
+    """PAR_CHECK 시트 = 검토자 FY25 '검증' 시트의 Par 검증 블록 배치(사용자 요청 2026-09-08): 국고채 6개월·회사채 3개월 표, 행 수 = CURVE_HORIZON_Y×m, 값은 Rf_dc/Rd_dc 에서 수식으로."""
+
+    def test_layout_and_formulas(self):
+        from openpyxl import load_workbook
+        from cb_valuation.step1_curve.io.evidence_writer import export_xlsx
+        base = tempfile.mkdtemp(prefix="cb_rs_")
+        try:
+            s, C = drive_to_done(base, "LINEAR", step="weekly", horizon_years=10)
+            pc = load_workbook(export_xlsx(s, C, base))["PAR_CHECK"]
+            n_rf, n_rd = int(round(C.CURVE_HORIZON_Y * C.RF_FREQ)), int(round(C.CURVE_HORIZON_Y * C.RD_FREQ))
+            self.assertTrue(str(pc["B2"].value).startswith("Par 검증 - 국고채 (이자지급 6개월"))
+            self.assertEqual([pc.cell(3, c).value for c in (3, 4, 6, 8)], ["Date", "Daycount convention", "Rate", "Par 검증"])
+            self.assertEqual(pc["B4"].value, "평가일"); self.assertEqual(pc["C4"].value.date().isoformat(), s.provenance.valuation_date); self.assertEqual(pc["H4"].value, "1확인")
+            self.assertEqual(pc["B5"].value, "쿠폰지급일"); self.assertEqual(pc["C5"].value, "=EOMONTH(C4,6)"); self.assertEqual(pc["C6"].value, "=EOMONTH(C5,6)")
+            self.assertEqual(pc["D5"].value, "=YEARFRAC($C$4,C5,0)"); self.assertEqual(pc["E5"].value, "=(C5-$C$4)/365")
+            self.assertEqual(pc["F5"].value, "=IFERROR(HLOOKUP($D5*2,Rf_dc!$C$16:$V$18,3,FALSE),0)")
+            self.assertEqual(pc["G5"].value, "=IFERROR((1/HLOOKUP($D5*2,Rf_dc!$C$16:$V$22,7,FALSE))^(1/$D5)-1,0)")
+            self.assertEqual(pc["H5"].value, "=SUMPRODUCT(($F5/2)/(1+$F5/2)^($D$5:D5*2))+1/(1+$F5/2)^(D5*2)")
+            self.assertEqual(pc["I5"].value, "=SUMPRODUCT(($F5/2)/(1+$G$5:G5)^($D$5:D5))+1/(1+G5)^D5")
+            last_rf = 5 + n_rf - 1
+            self.assertTrue(str(pc.cell(last_rf, 3).value).startswith("=EOMONTH(")); self.assertIsNone(pc.cell(last_rf + 1, 3).value)
+            r2 = last_rf + 3  # 회사채 표 제목
+            self.assertTrue(str(pc.cell(r2, 2).value).startswith("Par 검증 - 회사채 (이자지급 3개월"))
+            self.assertEqual(pc.cell(r2 + 3, 3).value, f"=EOMONTH(C{r2 + 2},3)")
+            self.assertEqual(pc.cell(r2 + 3, 6).value, f"=IFERROR(HLOOKUP($D{r2 + 3}*4,Rd_dc!$C$16:$AP$18,3,FALSE),0)")
+            self.assertEqual(pc.cell(r2 + 3, 7).value, f"=IFERROR((1/HLOOKUP($D{r2 + 3}*4,Rd_dc!$C$16:$AP$20,5,FALSE))^(1/$D{r2 + 3})-1,0)")
+            self.assertTrue(str(pc.cell(r2 + 3 + n_rd - 1, 3).value).startswith("=EOMONTH(")); self.assertIsNone(pc.cell(r2 + 3 + n_rd, 3).value)
+            self.assertEqual(pc["C5"].number_format, "mm-dd-yy"); self.assertEqual(pc["F5"].number_format, "0.00%;[Red]\-0.00%;\-"); self.assertEqual(pc["H5"].number_format, "0.00")
+            self.assertTrue(pc["B4"].font.bold); self.assertEqual(pc["C3"].fill.patternType, "solid")
+        finally:
+            shutil.rmtree(base, ignore_errors=True)

@@ -247,8 +247,9 @@ def cells(p: Params) -> dict:
     for i, t in enumerate(p.tenors, start=1):
         c = i + 2; cl = col(c)
         out[(4, c)] = t["step"]; out[(5, c)] = t["label"]; out[(6, c)] = t["ytm"]
-        out[(7, c)] = f"=INDEX($C${R['spot']}:${Lw}${R['spot']},{cl}$4)"
-        out[(9, t["step"] + 2)] = _marker_label(t["years"])
+        out[(7, c)] = f'=IFERROR(INDEX($C${R["spot"]}:${Lw}${R["spot"]},{cl}$4),"")'  # 산출 기간 밖 테너(격자 뒤)는 빈칸
+        if t["step"] <= N:
+            out[(9, t["step"] + 2)] = _marker_label(t["years"])
         if pchip:
             out[(R["slope"], c)] = _pchip_slope_formula(p, i)
     if pchip:
@@ -416,7 +417,7 @@ def evaluate(p: Params) -> dict:
     ws = [anchor[w // spq] if w % spq == 0 else (f2[w - 1] * f1[w - 1]) ** (1 / w) - 1 for w in idx]
     spot = [_xpow(1 + r, P) - 1 for r in ws]
     pvf = [1 / x for x in f1]
-    V[R["fwd"]] = fwd; V[R["spot"]] = spot; V[7] = [spot[t - 1] for t in steps]
+    V[R["fwd"]] = fwd; V[R["spot"]] = spot; V[7] = [spot[t - 1] if t <= N else None for t in steps]  # 격자 밖 테너는 None(시트는 빈칸)
     V[R["widx"]] = idx; V[R["ws"]] = ws; V[R["f1"]] = f1; V[R["f2"]] = f2; V[R["wf"]] = fwd; V[R["pvf"]] = pvf
     if p.kind == "RD":
         V[R["wfy"]] = [_xpow(1 + f, P) - 1 for f in fwd]

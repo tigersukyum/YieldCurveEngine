@@ -129,6 +129,16 @@
   - 검증(`reference/verify_formula_sheet.py PCHIP`, Excel 재계산 vs 파이썬 모형): 행 8 ≤3.3e-19, 행 11 ≤2.8e-17, 나머지 행 ≤1.3e-14(10000 배율 행 1.8e-12). LINEAR 도 같은 도구로 확인.
 - 엔진과의 관계: 엔진은 연 단위 t 로, 시트는 스텝 단위로 PCHIP 을 평가한다(PCHIP 은 x 의 선형 변환에 불변) — 이표 격자 YTM(행 18)·DF 는 1e-12 안에서 일치(`tests/test_reviewer_sheet.py::TestInterpolationChoice`).
 
+## 8. PAR_CHECK 시트 — 검토자 FY25 패키지 '검증' 시트의 Par 검증 블록 (사용자 요청 2026-09-08)
+원천: FY25 검토자 패키지 `검증`!B13:I29(국고채 1개 표, 반기 이표, 'Boot Strapping' 시트에서 VLOOKUP). 구현 `io/evidence_writer._write_par_check_formula`(`PAR_CHECK_LAYOUT`), 수식 시트가 적용될 때만(아니면 종전 열 지향 표).
+- 표 2개: **국고채(이자지급 6개월, Rf_dc)** 와 **회사채(이자지급 3개월, Rd_dc)**. 행 수 = `CURVE_HORIZON_Y × m`(산출 기간 최대 기준: 20행·40행). 배치는 원본과 같다 — 제목(B, 굵게) / 헤더 행(Date · Daycount convention · Rate · Par 검증, 연회색 채우기, 가운데) / 평가일 행(굵게·연회색; C = 평가기준일, D `30/360`, E `Act/365F`, F `YTM`, G `Spot`, H `1확인`) / 쿠폰지급일 행들(thin 테두리, 열 폭 B 28.1·C 13.9, 맑은 고딕 11).
+- 행 수식(k 번째 쿠폰일, 표의 평가일 셀 = `$C$base`): C `=EOMONTH(이전 C, 12/m)`, D `=YEARFRAC($C$base, C, 0)`(30/360 → 0.5·1.0… / 0.25·0.5…), E `=(C−$C$base)/365`,
+  F(YTM) `=IFERROR(HLOOKUP($D·m, Rf_dc!$C$16:$V$18, 3, FALSE), 0)`(기간번호 행 16 → YTM 행 18), G(Spot, 연복리) `=IFERROR((1/HLOOKUP($D·m, Rf_dc!$C$16:$V$22, 7, FALSE))^(1/$D)−1, 0)`(DF 행 22 → (1/DF)^(1/t)−1; Rd 는 행 20, 5번째),
+  H(Par 검증·YTM 항등식) `=SUMPRODUCT(($F/m)/(1+$F/m)^($D$first:D·m))+1/(1+$F/m)^(D·m)`, I(Par 검증·현물 재가격) `=SUMPRODUCT(($F/m)/(1+$G$first:G)^($D$first:D))+1/(1+G)^D`.
+  원본의 I 는 연속복리 현물 `EXP(−g·t)` 였으나 이 통합문서의 부트스트랩 관례(이산 이표 격자)에 맞춰 `(1+g)^−t`(= DF)로 쓴다 — 두 검증 모두 1 이어야 한다.
+- 산출 기간이 표보다 짧으면(예 5년) 범위 밖 행은 IFERROR 로 YTM·Spot 0, 검증값 1 로 표시된다(원본 패키지 24~29행과 같은 동작).
+- 검증(`reference/verify_formula_sheet.py`, Excel 재계산): LINEAR 10년 — H·I 모두 |값−1| ≤ 4e-15(국고채 20행·회사채 40행); PCHIP 5년 — 범위 안 행 동일, 범위 밖 행 1.
+
 ## 6. 엔진(state)과의 관계
 수식 시트는 state 값을 복사하지 않고 **입력(테너·YTM·고시일)만** 받아 Excel 이 다시 계산한다. 엔진의 REVIEWER_2024 결과와는 정의가 같아 분기 DF 는 2.2e-16, 격자 주간 선도는 ≤4e-10 안에서 일치한다(`tests/test_reviewer_sheet.py`; 선도의 차이는 엔진 격자 시각이 `T_ROUND_DIGITS` 로 반올림되어(1/52 → 0.01923077, 상대 4e-8) 생기는 것이고 시트는 정확한 1/13 지수를 쓴다).
 표시 정의가 다른 곳(원본 C열 명목 앵커, 행 12/32 의 주간복리 체인)은 시트 쪽 정의를 따르며 state 에는 쓰지 않는다. par 검증은 시트의 MODEL CHECK 행(수식)과 엔진의 PAR_CHECK 시트(값) 두 곳에 남는다.

@@ -112,13 +112,13 @@
 <div id="app">
 <div id="banner">
   <span class="brand">이자율 커브 엔진</span>
-  <span class="tag">YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙</span>
+  <span class="tag">YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 증빙</span>
   <span class="meta">
     <span id="b-profile">프로필 —</span>
     <span id="b-node">노드 —</span>
     <span id="b-run">run —</span>
     <span id="b-status" class="callout">상태: 대기</span>
-    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08h</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08i</span>
   </span>
 </div>
 <div id="init-error"></div>
@@ -198,7 +198,7 @@
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08h";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08i";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
