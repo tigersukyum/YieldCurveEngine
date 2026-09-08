@@ -182,6 +182,8 @@ def _adapt(text: str, p: Params) -> str:
         text = text.replace("WEEKLY", f"{sw}LY").replace("Weekly", f"{sw.title()}ly").replace("WEEKS", f"{sw}S").replace("Weekly", f"{sw.title()}ly")
     if pw != "QUARTER":
         text = text.replace("QUARTERLY", f"{pw}LY").replace("Quarterly", f"{pw.title()}ly").replace("QUARTER", pw)
+    if p.method == "pchip":
+        text = text.replace("LINEAR INTERPOLATED", "PCHIP INTERPOLATED")  # 블록 2 제목(행 9): 마디 YTM 보간법에 맞춤
     return text
 
 
