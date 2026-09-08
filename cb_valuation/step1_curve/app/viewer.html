@@ -21,7 +21,7 @@
   #banner .brand { font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; }
   #banner .tag { font:12px/1.4 var(--ff-body); color:var(--canvas); }
   #banner .meta { margin-left:auto; display:flex; align-items:center; gap:14px; font:12px/1.4 var(--ff-body); }
-  .callout { color:var(--primary); font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; white-space:nowrap; }
+  .callout { color:var(--peri); font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; white-space:nowrap; }  /* 사용자 결정 2026-09-08: 빨강 대신 보라 계열(periwinkle) */
   .sticker { display:inline-block; background:var(--yellow); color:var(--ink); border:1px solid var(--ink); font:700 12px/1 var(--ff-ui); padding:4px 8px; text-transform:uppercase; }
   .sticker.sm { font-size:10px; padding:2px 5px; margin-left:6px; vertical-align:middle; }
   #init-error { grid-column:1/3; display:none; color:var(--primary); border-bottom:1px solid var(--ink); padding:8px 16px; white-space:pre-wrap; font:700 12px/1.4 var(--ff-ui); }
@@ -63,8 +63,8 @@
   .btn.primary, .btn.active { background:var(--ink); color:var(--canvas); }
   .btn.secondary { background:var(--canvas); color:var(--ink); }
   .btn.big { padding:10px 22px; font-size:14px; }
-  /* 빨간 CTA 블록: 페이지당 하나(실행) */
-  .cta { background:var(--primary); color:var(--canvas); border:1px solid var(--ink); padding:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 12px; }
+  /* CTA 블록(보라): 페이지당 하나(실행) */
+  .cta { background:var(--purple); color:var(--canvas); border:1px solid var(--ink); padding:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 12px; }  /* 사용자 결정 2026-09-08: 빨강 대신 보라(purple-stripe) */
   .cta b { font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; display:block; margin-bottom:4px; }
   .cta .btn.primary { margin:0; }
   /* 드롭존: 실선 검은 테두리, 끌어올 때 노란 스티커색 */
@@ -118,7 +118,7 @@
     <span id="b-node">노드 —</span>
     <span id="b-run">run —</span>
     <span id="b-status" class="callout">상태: 대기</span>
-    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08b</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08c</span>
   </span>
 </div>
 <div id="init-error"></div>
@@ -214,7 +214,7 @@
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08b";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08c";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
