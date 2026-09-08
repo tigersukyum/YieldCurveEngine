@@ -538,7 +538,12 @@ def write_sheet(ws, wb, p: Params) -> dict:
 
 def blocks(p: Params) -> list:
     """화면용 블록(검토자 배치 그대로: 행 = 라벨, 열 = 스텝). 값은 파이썬 모형(evaluate)."""
-    V = evaluate(p); lab = labels(p)
+    V = evaluate(p); lab = labels(p); R = p.rows
+    sw = STEP_WORDS[p.P].title()
+    # 시트에서 라벨이 없는 행(주 번호·B5 고시일·Rd 행 34·액면)은 화면에서만 설명 라벨을 붙인다(xlsx 는 원본 그대로)
+    screen_only = {5: (p.curve_date.date().isoformat() if p.curve_date else "curve date"), R["idx"]: f"{sw} no.", R["widx"]: f"{sw} no."}
+    if p.kind == "RD":
+        screen_only.update({R["widx2"]: f"{sw} no.", R["wfy"]: "FORWARD RATE - Yearly (grid, =(1+F)^P-1)", R["face"]: "FACE (PV OF BOND)"})
     out = []
     for bi, (key, title_row, rows, kind) in enumerate(_BLOCKS[p.kind], start=1):
         block = {"index": bi, "key": key, "title": lab.get(title_row, key), "orient": "rows", "rows": []}
@@ -546,7 +551,7 @@ def blocks(p: Params) -> list:
             vals = V.get(r)
             if vals is None:
                 continue
-            block["rows"].append({"label": lab.get(r, ""), "key": f"row{r}", "fmt": number_format_of(p, r), "values": list(vals),
+            block["rows"].append({"label": lab.get(r) or screen_only.get(r, ""), "key": f"row{r}", "fmt": number_format_of(p, r), "values": list(vals),
                                   "extra": V.get((r, "X"))})
         out.append(block)
     return out

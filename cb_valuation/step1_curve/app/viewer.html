@@ -4,130 +4,217 @@
 <meta charset="utf-8">
 <title>이자율 커브 엔진 — 1단계</title>
 <style>
-  :root { --ok:#2f855a; --cur:#2b6cb0; --bad:#c53030; --warn:#b7791f; --line:#cbd5e0; }
-  body { font-family: "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif; margin:0; height:100vh; display:grid; grid-template-rows:46px 1fr; grid-template-columns:minmax(0,1fr) 560px; color:#1a202c; background:#fff; }
-  header { grid-column:1/3; display:flex; align-items:center; gap:14px; padding:0 14px; border-bottom:1px solid var(--line); background:#f7fafc; font-size:13px; }
-  header b { font-size:15px; }
-  .badge { padding:2px 8px; border-radius:10px; background:#edf2f7; }
-  .badge.paused { background:#fefcbf; } .badge.done { background:#c6f6d5; } .badge.failed { background:#fed7d7; } .badge.running { background:#bee3f8; }
-  #left { overflow:auto; padding:10px 14px; }
-  #right { border-left:1px solid var(--line); overflow:auto; background:#fafafa; padding:6px 8px; }
-  .tabs { display:flex; gap:4px; margin-bottom:8px; }
-  .tabs button { border:1px solid var(--line); background:#fff; padding:5px 12px; cursor:pointer; border-radius:4px; }
-  .tabs button.active { background:#2b6cb0; color:#fff; border-color:#2b6cb0; }
+  /* 디자인 토큰: ref/design/DESIGN-dell-1996.md — 검은 페이지 프레임, 평면 색블록 리본 카드, Arial Black 제목, Helvetica 굵은 UI 라벨, Times 본문, 모서리 0, 그림자 없음 */
+  :root {
+    --ink:#000; --canvas:#fff; --primary:#e91d2a; --yellow:#fcc20f; --purple:#6a26a4; --link:#0000ee;
+    --olive:#8e8a25; --sage:#b3bd95; --salmon:#d77a7a; --peach:#e6915d; --lime:#c0d4a7; --sky:#9ab6c8; --steel:#a5b8c0; --peri:#8c9ae0;
+    --ff-display:"Arial Black","Helvetica Neue",Helvetica,Arial,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    --ff-ui:Helvetica,Arial,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    --ff-body:"Times New Roman",Times,Batang,"바탕","Apple Myungjo",serif;
+  }
+  html, body { height:100%; margin:0; }
+  body { background:var(--ink); padding:8px; box-sizing:border-box; font:14px/1.4 var(--ff-body); color:var(--ink); }
+  #app { background:var(--canvas); height:100%; display:grid; grid-template-rows:auto auto minmax(0,1fr) auto; grid-template-columns:minmax(0,1fr) 560px; overflow:hidden; }
+  /* 상단 배너(top-banner) + 상태 콜아웃(phone-callout 자리) + 버전 스티커 */
+  #banner { grid-row:1; grid-column:1/3; background:var(--ink); color:var(--canvas); padding:10px 16px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  #init-error { grid-row:2; } #left { grid-row:3; grid-column:1; } #right { grid-row:3; grid-column:2; } #foot { grid-row:4; }  /* 숨은 오류 행이 있어도 자리 고정 */
+  #banner .brand { font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; }
+  #banner .tag { font:12px/1.4 var(--ff-body); color:var(--canvas); }
+  #banner .meta { margin-left:auto; display:flex; align-items:center; gap:14px; font:12px/1.4 var(--ff-body); }
+  .callout { color:var(--primary); font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; white-space:nowrap; }
+  .sticker { display:inline-block; background:var(--yellow); color:var(--ink); border:1px solid var(--ink); font:700 12px/1 var(--ff-ui); padding:4px 8px; text-transform:uppercase; }
+  .sticker.sm { font-size:10px; padding:2px 5px; margin-left:6px; vertical-align:middle; }
+  #init-error { grid-column:1/3; display:none; color:var(--primary); border-bottom:1px solid var(--ink); padding:8px 16px; white-space:pre-wrap; font:700 12px/1.4 var(--ff-ui); }
+  #left { overflow:auto; padding:16px 20px 24px; border-right:1px solid var(--ink); }
+  #right { overflow:auto; padding:12px 12px 24px; }
+  #foot { grid-column:1/3; border-top:1px solid var(--ink); padding:6px 16px; font:12px/1.4 var(--ff-body); display:flex; gap:18px; flex-wrap:wrap; }
+  a { color:var(--link); }
+  /* 탭 = 아이콘 라벨 내비: 굵은 대문자 라벨, 활성 표시는 primary 밑줄, 주의 단계는 노란 스티커 */
+  .tabs { display:flex; border-bottom:1px solid var(--ink); margin:0 0 16px; }
+  .tabs button { background:var(--canvas); color:var(--ink); border:0; border-right:1px solid var(--ink); padding:8px 14px; font:700 12px/1 var(--ff-ui); text-transform:uppercase; cursor:pointer; }
+  .tabs button.active { box-shadow:inset 0 -4px 0 var(--primary); }
+  .tabs button .sticker.sm { display:none; }
+  .tabs button.here .sticker.sm { display:inline-block; }
   .panel { display:none; } .panel.active { display:block; }
-  table { border-collapse:collapse; font-size:12px; margin:4px 0 10px; }
-  th, td { border:1px solid #e2e8f0; padding:2px 6px; text-align:right; white-space:nowrap; }
-  th { background:#f1f5f9; position:sticky; top:0; } td.l, th.l { text-align:left; }
-  .scroll { overflow:auto; max-height:420px; border:1px solid #e2e8f0; margin-bottom:10px; }
-  h3 { font-size:14px; margin:14px 0 4px; } h4 { font-size:13px; margin:8px 0 2px; color:#4a5568; }
-  label { display:block; font-size:12px; margin:4px 0 1px; color:#4a5568; }
-  input, select, textarea { font-size:12px; padding:3px 5px; border:1px solid var(--line); border-radius:3px; width:100%; box-sizing:border-box; }
-  textarea { font-family:Consolas, monospace; height:140px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:4px 12px; }
-  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:4px 12px; }
-  button.primary { background:#2b6cb0; color:#fff; border:0; padding:7px 16px; border-radius:4px; cursor:pointer; margin-top:8px; }
-  button.danger { background:#c53030; color:#fff; border:0; padding:7px 16px; border-radius:4px; cursor:pointer; margin-top:8px; }
-  button.ghost { background:#fff; border:1px solid var(--line); padding:6px 12px; border-radius:4px; cursor:pointer; margin-top:6px; }
-  .err { color:var(--bad); white-space:pre-wrap; font-size:12px; margin:6px 0; }
-  .note { font-size:12px; color:#4a5568; }
-  .help { font-size:11px; color:#718096; margin:0 0 4px; }
-  pre { font-size:11px; background:#f7fafc; padding:8px; overflow:auto; max-height:70vh; }
-  .drop { border:2px dashed #a0aec0; border-radius:6px; padding:16px; text-align:center; color:#4a5568; background:#f7fafc; margin:6px 0; }
-  .drop.over { border-color:var(--cur); background:#ebf8ff; }
-  .drop .link { color:var(--cur); text-decoration:underline; cursor:pointer; }
-  .ok { color:var(--ok); } .warnc { color:var(--warn); }
-  svg text { font-size:11px; }
-  .node rect { fill:#fff; stroke:#a0aec0; stroke-width:1.2; }
-  .node.human rect { rx:16; ry:16; stroke:#805ad5; }
+  h2 { font:900 24px/1.05 var(--ff-display); text-transform:uppercase; margin:0 0 12px; }
+  h3 { font:700 14px/1.2 var(--ff-ui); text-transform:uppercase; margin:16px 0 6px; }
+  h4 { font:700 12px/1.2 var(--ff-ui); text-transform:uppercase; margin:12px 0 4px; }
+  /* 리본 카드: 흰 제목 바 + 검은 밑줄 + 색블록 본문 */
+  .card { border:1px solid var(--ink); background:var(--canvas); margin:0 0 16px; }
+  .card > .t { border-bottom:1px solid var(--ink); padding:6px 12px; font:700 14px/1.2 var(--ff-ui); text-transform:uppercase; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .card > .b { padding:12px 16px; }
+  .b.sage { background:var(--sage); } .b.sky { background:var(--sky); } .b.lime { background:var(--lime); } .b.peach { background:var(--peach); }
+  .b.steel { background:var(--steel); } .b.peri { background:var(--peri); } .b.salmon { background:var(--salmon); }
+  .eyebrow { font:900 22px/1.05 var(--ff-display); text-transform:uppercase; padding:10px 16px; border:1px solid var(--ink); margin:0 0 12px; }
+  .eyebrow.sage { background:var(--sage); } .eyebrow.salmon { background:var(--salmon); }
+  /* 폼 */
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; }
+  .grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:6px 14px; }
+  label { display:block; font:700 12px/1 var(--ff-ui); margin:8px 0 3px; }
+  input, select, textarea { font:14px/1.3 var(--ff-body); color:var(--ink); background:var(--canvas); border:1px solid var(--ink); border-radius:0; padding:4px 6px; width:100%; box-sizing:border-box; }
+  input[type=checkbox] { width:auto; }
+  textarea { font-family:Consolas, "Courier New", monospace; font-size:12px; height:140px; }
+  .help { font:11px/1.35 var(--ff-body); margin:2px 0 0; }
+  .note { font:14px/1.4 var(--ff-body); margin:4px 0; }
+  .err { color:var(--primary); font:700 12px/1.4 var(--ff-ui); white-space:pre-wrap; margin:6px 0; }
+  .ok { font-weight:700; } .warnc { color:var(--primary); font-weight:700; }
+  /* 버튼: 검은 채움(primary) / 흰 테두리(secondary), 모서리 0 */
+  .btn { font:700 12px/1 var(--ff-ui); text-transform:uppercase; padding:7px 16px; border:1px solid var(--ink); border-radius:0; cursor:pointer; margin:6px 6px 0 0; }
+  .btn.primary, .btn.active { background:var(--ink); color:var(--canvas); }
+  .btn.secondary { background:var(--canvas); color:var(--ink); }
+  .btn.big { padding:10px 22px; font-size:14px; }
+  /* 빨간 CTA 블록: 페이지당 하나(실행) */
+  .cta { background:var(--primary); color:var(--canvas); border:1px solid var(--ink); padding:16px; display:flex; align-items:center; justify-content:space-between; gap:16px; margin:0 0 12px; }
+  .cta b { font:700 16px/1.2 var(--ff-ui); text-transform:uppercase; display:block; margin-bottom:4px; }
+  .cta .btn.primary { margin:0; }
+  /* 드롭존: 실선 검은 테두리, 끌어올 때 노란 스티커색 */
+  .drop { border:1px solid var(--ink); background:var(--canvas); padding:14px; text-align:center; margin:6px 0; }
+  .drop.over { background:var(--yellow); }
+  .drop input[type=file] { width:auto; margin-top:8px; padding:4px; font-size:12px; }
+  /* 데이터 표: 검은 헤어라인, 헤더 대문자 캡션, 본문 Times 12, 숫자 우측·고정 첫 열 */
+  table { border-collapse:collapse; font:12px/1.3 var(--ff-body); font-variant-numeric:tabular-nums; background:var(--canvas); margin:4px 0 10px; }
+  th, td { border:1px solid var(--ink); padding:3px 8px; text-align:right; white-space:nowrap; }
+  th { font:700 11px/1.2 var(--ff-ui); text-transform:uppercase; background:var(--canvas); position:sticky; top:0; z-index:1; }
+  td.l, th.l { text-align:left; position:sticky; left:0; background:var(--canvas); z-index:2; } th.l { z-index:3; }
+  .scroll { overflow:auto; max-height:440px; border:1px solid var(--ink); margin:0 0 12px; }
+  .scroll table { margin:0; border:0; }
+  pre { font:11px/1.35 Consolas, "Courier New", monospace; border:1px solid var(--ink); padding:8px; overflow:auto; max-height:70vh; background:var(--canvas); }
+  .sev-FAIL { color:var(--primary); font-weight:700; } .sev-APPROVAL_REQUIRED { background:var(--yellow); font-weight:700; padding:0 4px; } .sev-WARN { }
+  .kv td:first-child { font:700 11px/1.3 var(--ff-ui); text-transform:uppercase; text-align:left; }
+  .swatch { display:inline-block; width:12px; height:12px; border:1px solid var(--ink); vertical-align:middle; margin-right:4px; }
+  .legend { font:11px/1.6 var(--ff-body); display:flex; flex-wrap:wrap; gap:4px 12px; margin:0 0 6px; }
+  /* 그래프(EDGES): 노드는 사각형, 방문 lime · 현재 sky · 승인 대기 yellow · 실패 salmon · 완료 sage */
+  svg text { font:11px var(--ff-body); }
+  .node rect { fill:var(--canvas); stroke:var(--ink); stroke-width:1; }
+  .node.human rect { stroke-width:2.5; }
   .node.terminal rect { stroke-width:2; }
-  .node.visited rect { fill:#e6fffa; stroke:var(--ok); }
-  .node.current rect { fill:#ebf8ff; stroke:var(--cur); stroke-width:3; }
-  .node.paused rect { fill:#fefcbf; stroke:var(--warn); stroke-width:3; }
-  .node.failed rect { fill:#fed7d7; stroke:var(--bad); stroke-width:3; }
-  .node.done rect { fill:#c6f6d5; stroke:var(--ok); stroke-width:3; }
-  .node text { pointer-events:none; }
-  .edge { fill:none; stroke:#cbd5e0; stroke-width:1.2; }
-  .edge.trav { stroke:var(--ok); stroke-width:2.6; }
-  .edge.trav.tofail { stroke:var(--bad); }
-  .edge.trav.towait { stroke:var(--warn); }
-  .elabel { font-size:10px; fill:#2d3748; }
-  #pathlist { font-size:11px; margin-top:6px; }
-  #pathlist li { margin:1px 0; }
-  .sev-FAIL { color:var(--bad); font-weight:bold; } .sev-APPROVAL_REQUIRED { color:var(--warn); font-weight:bold; } .sev-WARN { color:#4a5568; }
-  .curvetabs button { margin-right:4px; }
-  .curvetabs button.active { background:#2f855a; color:#fff; border-color:#2f855a; }
+  .node.visited rect { fill:var(--lime); }
+  .node.current rect { fill:var(--sky); stroke-width:3; }
+  .node.paused rect { fill:var(--yellow); stroke-width:3; }
+  .node.failed rect { fill:var(--salmon); stroke-width:3; }
+  .node.done rect { fill:var(--sage); stroke-width:3; }
+  .node text { pointer-events:none; } .node text.id { font:700 11px var(--ff-ui); }
+  .edge { fill:none; stroke:var(--steel); stroke-width:1; }
+  .edge.trav { stroke:var(--ink); stroke-width:2.4; }
+  .edge.trav.tofail { stroke:var(--primary); }
+  .edge.trav.towait { stroke:var(--olive); }
+  .elabel { font:700 10px var(--ff-ui); fill:var(--ink); }
+  #pathlist { font:11px/1.5 var(--ff-body); margin:4px 0 0; padding-left:18px; }
+  .curvetabs { margin:0 0 8px; }
+  @media (max-width:1100px) {
+    #app { grid-template-columns:1fr; grid-template-rows:auto auto auto auto auto; overflow:auto; }
+    #banner, #init-error, #foot { grid-column:1; }
+    #left { grid-row:3; grid-column:1; border-right:0; border-bottom:1px solid var(--ink); overflow:visible; } #right { grid-row:4; grid-column:1; overflow:visible; } #foot { grid-row:5; }
+  }
 </style>
 </head>
 <body>
-<header>
-  <b>이자율 커브 엔진 — 1단계 (YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙)</b>
-  <span id="b-profile" class="badge">프로필: —</span>
-  <span id="b-status" class="badge">상태: 대기</span>
-  <span id="b-node" class="badge">현재 노드: —</span>
-  <span id="b-run" class="badge">run: —</span>
-  <span id="b-ver" class="badge" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08a</span>
-</header>
-<div id="init-error" class="err" style="grid-column:1/3;padding:8px 14px;display:none;background:#fff5f5"></div>
+<div id="app">
+<div id="banner">
+  <span class="brand">이자율 커브 엔진 · 1단계</span>
+  <span class="tag">YTM 매트릭스 → 부트스트래핑 → 보간 → 현물/선도 → par 검증 → 승인 → 증빙</span>
+  <span class="meta">
+    <span id="b-profile">프로필 —</span>
+    <span id="b-node">노드 —</span>
+    <span id="b-run">run —</span>
+    <span id="b-status" class="callout">상태: 대기</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08b</span>
+  </span>
+</div>
+<div id="init-error"></div>
 
 <div id="left">
   <div class="tabs">
-    <button data-tab="input" class="active">입력</button>
-    <button data-tab="result">결과</button>
-    <button data-tab="approve">승인</button>
-    <button data-tab="evidence">증빙</button>
+    <button data-tab="input" class="active">1 입력<span class="sticker sm">지금 여기</span></button>
+    <button data-tab="approve">2 승인<span class="sticker sm">지금 여기</span></button>
+    <button data-tab="result">3 결과<span class="sticker sm">지금 여기</span></button>
+    <button data-tab="evidence">4 증빙<span class="sticker sm">지금 여기</span></button>
     <button data-tab="state">state JSON</button>
   </div>
 
   <div id="tab-input" class="panel active">
-    <h3>① YTM 매트릭스 (채권평가사 시가평가 기준수익률 표)</h3>
-    <div class="help">파일 형식: 평가사 사이트에서 내려받은 xlsx/xlsm(첫 시트 또는 'KIS-NET' 시트) 또는 CSV/TSV/TXT. 첫 행 = 종류,구분,적용대상채권,3M,6M,…,50Y — 결측은 '-'. 금리표는 이 PC 밖으로 나가지 않습니다(127.0.0.1 전용).</div>
-    <div id="drop" class="drop">여기에 파일을 끌어다 놓거나 아래 버튼으로 선택하세요<br>
-      <input type="file" id="f-file" accept=".csv,.tsv,.txt,.xlsx,.xlsm" style="width:auto;margin-top:8px;padding:4px;background:#fff"></div>
-    <div><button class="ghost" id="btn-paste">직접 붙여넣기(표를 복사해서 넣기)</button></div>
-    <div id="paste-box" hidden><textarea id="f-matrix_text" placeholder="종류,구분,적용대상채권,3M,6M,9M,1Y,1.5Y,2Y,2.5Y,3Y,4Y,5Y,7Y,10Y,15Y,20Y,30Y,50Y&#10;,국고채권,국고채,2.422,…"></textarea><button class="ghost" id="btn-parse">붙여넣은 표 읽기</button></div>
-    <div id="matrix-info" class="note">아직 매트릭스가 없습니다.</div>
-
-    <h3>② 커브 설정</h3>
-    <div class="grid3">
-      <div><label>프로필 (보간법·관례 묶음, 필수)</label><select id="f-profile"><option value="">— 선택 —</option></select></div>
-      <div><label>노드 간격</label><select id="f-step"></select><div class="help">산출 격자 dt: 월간 1/12년 · 주간 1/52년 · 일간 1/365년(달력일)</div></div>
-      <div><label>산출 기간 (년)</label><input id="f-horizon" type="number" step="0.5" min="0.5"><div class="help">최대 = CURVE_HORIZON_Y(부트스트랩 마지막 마디)</div></div>
-      <div><label>무위험(RF) 행</label><select id="f-rf"></select></div>
-      <div><label>위험(RD) 행</label><select id="f-rd"></select></div>
-      <div><label>커브 세트 id (산출물 폴더 이름)</label><input id="f-curve_set_id" value="CURVE1"></div>
-      <div><label>평가기준일</label><input id="f-valuation_date" type="date"></div>
-      <div><label>커브 고시일 (비우면 평가기준일)</label><input id="f-curve_date" type="date"><div class="help">고시일이 평가기준일보다 앞서면 승인(DATE_LAG), CURVE_DATE_MAX_LAG_DAYS 초과면 실패</div></div>
-      <div><label>평가사</label><select id="f-source_agency"></select></div>
-      <div><label>담당자 (프로필 선택자로 기록)</label><select id="f-operator"></select><input id="f-operator_text" placeholder="이름 직접 입력" hidden></div>
+    <h2>입력</h2>
+    <div class="card">
+      <div class="t"><span>① YTM 매트릭스</span><span class="help">채권평가사 시가평가 기준수익률 표 · 이 PC 밖으로 나가지 않음(127.0.0.1)</span></div>
+      <div class="b sage">
+        <div id="drop" class="drop">파일을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요 — xlsx/xlsm(첫 시트 또는 'KIS-NET' 시트) 또는 CSV/TSV/TXT<br>
+          <input type="file" id="f-file" accept=".csv,.tsv,.txt,.xlsx,.xlsm"></div>
+        <div class="help">첫 행 = 종류,구분,적용대상채권,3M,6M,…,50Y · 결측은 '-'</div>
+        <button class="btn secondary" id="btn-paste">직접 붙여넣기</button>
+        <div id="paste-box" hidden><textarea id="f-matrix_text" placeholder="종류,구분,적용대상채권,3M,6M,9M,1Y,1.5Y,2Y,2.5Y,3Y,4Y,5Y,7Y,10Y,15Y,20Y,30Y,50Y&#10;,국고채권,국고채,2.422,…"></textarea><button class="btn secondary" id="btn-parse">붙여넣은 표 읽기</button></div>
+        <div id="matrix-info" class="note">아직 매트릭스가 없습니다.</div>
+      </div>
     </div>
 
-    <h3>③ 출처 증빙 (선택)</h3>
-    <div class="help"><b>사용 행 캡처</b> = 평가사 화면에서 이번에 쓰는 행(국고채·회사채 등급 행)이 보이는 화면 캡처(이미지 또는 PDF). 감사인 질의 Q12(YTM 커브 출처 캡처)에 대한 증빙이며, 없으면 승인 단계에서 CAPTURE_MISSING 코드를 확인(ack)하고 진행합니다.</div>
-    <div id="drop-cap" class="drop">캡처 파일을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요<br>
-      <input type="file" id="f-capfile" accept="image/*,.pdf" style="width:auto;margin-top:8px;padding:4px;background:#fff"></div>
-    <div id="cap-info" class="note">캡처 없음</div>
+    <div class="card">
+      <div class="t"><span>② 커브 설정</span><span class="help">프로필·행은 실행 시 사용자가 고른다(기본값 없음)</span></div>
+      <div class="b sky">
+        <div class="grid3">
+          <div><label>프로필 (보간법·관례 묶음)<span class="sticker sm">필수</span></label><select id="f-profile"><option value="">— 선택 —</option></select></div>
+          <div><label>노드 간격</label><select id="f-step"></select><div class="help">월간 1/12년 · 주간 1/52년 · 일간 1/365년</div></div>
+          <div><label>산출 기간 (년)</label><input id="f-horizon" type="number" step="0.5" min="0.5"><div class="help">최대 = 부트스트랩 마지막 마디(CURVE_HORIZON_Y)</div></div>
+          <div><label>무위험(RF) 행<span class="sticker sm">필수</span></label><select id="f-rf"></select></div>
+          <div><label>위험(RD) 행<span class="sticker sm">필수</span></label><select id="f-rd"></select></div>
+          <div><label>커브 세트 id (산출물 폴더 이름)</label><input id="f-curve_set_id" value="CURVE1"></div>
+          <div><label>평가기준일<span class="sticker sm">필수</span></label><input id="f-valuation_date" type="date"></div>
+          <div><label>커브 고시일 (비우면 평가기준일)</label><input id="f-curve_date" type="date"><div class="help">평가기준일보다 앞서면 승인(DATE_LAG), CURVE_DATE_MAX_LAG_DAYS 초과면 실패</div></div>
+          <div><label>평가사</label><select id="f-source_agency"></select></div>
+          <div><label>담당자 (프로필 선택자로 기록)</label><select id="f-operator"></select><input id="f-operator_text" placeholder="이름 직접 입력" hidden></div>
+        </div>
+      </div>
+    </div>
 
-    <div><button class="primary" id="btn-run">실행 (매트릭스 적재 → 입력 승인 정지)</button></div>
+    <div class="card">
+      <div class="t"><span>③ 출처 증빙 (선택)</span><span class="help">감사인 질의 Q12 — 사용 행이 보이는 평가사 화면 캡처</span></div>
+      <div class="b lime">
+        <div id="drop-cap" class="drop">캡처 파일(이미지 또는 PDF)을 여기에 끌어다 놓거나 아래 버튼으로 선택하세요<br>
+          <input type="file" id="f-capfile" accept="image/*,.pdf"></div>
+        <div class="help">없으면 승인 단계에서 CAPTURE_MISSING 코드를 확인(ack)하고 진행합니다.</div>
+        <div id="cap-info" class="note">캡처 없음</div>
+      </div>
+    </div>
+
+    <div class="cta">
+      <div><b>실행</b>매트릭스를 적재하고 라벨을 해석한 뒤 <u>입력 승인</u>에서 멈춥니다. 오른쪽 그래프에서 현재 노드를 확인하세요.</div>
+      <button class="btn primary big" id="btn-run">실행 ▸</button>
+    </div>
     <div id="run-error" class="err"></div>
   </div>
 
-  <div id="tab-result" class="panel"><div id="result-body" class="note">아직 실행 결과가 없습니다.</div></div>
-  <div id="tab-approve" class="panel"><div id="approve-body" class="note">정지 중인 승인 노드가 없습니다.</div></div>
-  <div id="tab-evidence" class="panel"><div id="evidence-body" class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성).</div></div>
-  <div id="tab-state" class="panel"><pre id="state-json">—</pre></div>
+  <div id="tab-approve" class="panel"><h2>승인</h2><div id="approve-body" class="note">정지 중인 승인 노드가 없습니다.</div></div>
+  <div id="tab-result" class="panel"><h2>결과</h2><div id="result-body" class="note">아직 실행 결과가 없습니다.</div></div>
+  <div id="tab-evidence" class="panel"><h2>증빙</h2><div id="evidence-body" class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성).</div></div>
+  <div id="tab-state" class="panel"><h2>state JSON</h2><pre id="state-json">—</pre></div>
 </div>
 
 <div id="right">
-  <div class="note">그래프 = <code>graph/step1_graph.py</code> 의 EDGES 배열(화면에는 흐름 로직이 없습니다). 굵은 선 = 지나온 엣지, 노란 테두리 = 사람 승인 대기, 파란 = 현재, 빨간 = 실패.</div>
-  <svg id="graph" width="540" height="1240"></svg>
-  <div id="node-doc" class="note"></div>
-  <h4>지나온 경로 (run.path = 감사조서)</h4>
-  <ol id="pathlist"></ol>
+  <div class="card">
+    <div class="t"><span>흐름 그래프 — EDGES</span><span class="help">graph/step1_graph.py · 화면에는 흐름 로직 없음</span></div>
+    <div class="b">
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--lime)"></i>지나온 노드</span><span><i class="swatch" style="background:var(--sky)"></i>현재</span>
+        <span><i class="swatch" style="background:var(--yellow)"></i>사람 승인 대기</span><span><i class="swatch" style="background:var(--salmon)"></i>실패</span>
+        <span><i class="swatch" style="background:var(--sage)"></i>완료</span><span><i class="swatch" style="border-width:2.5px"></i>승인 노드(굵은 테두리)</span>
+      </div>
+      <svg id="graph" width="524" height="1300"></svg>
+      <div id="node-doc" class="help"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="t"><span>지나온 경로 — run.path</span><span class="help">감사조서</span></div>
+    <div class="b"><ol id="pathlist"></ol></div>
+  </div>
+</div>
+
+<div id="foot">
+  <span>서버 127.0.0.1 전용 — 금리표는 이 PC 밖으로 나가지 않습니다.</span>
+  <span>흐름 정의: <a href="#" onclick="return false">graph/step1_graph.py EDGES</a> · 엑셀 규격: <a href="#" onclick="return false">docs/REVIEWER_SHEET_SPEC.md</a></span>
+  <span>화면이 이상하면 Ctrl+F5, 그래도 안 되면 start_app.bat 재실행.</span>
+</div>
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08a";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08b";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
@@ -147,19 +234,24 @@ function showTab(name) {
   document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("active", x.dataset.tab === name));
   document.querySelectorAll(".panel").forEach(p => p.classList.toggle("active", p.id === "tab-" + name));
 }
+function markHere() {  // 상태(state)만 보고 "지금 볼 탭"에 스티커를 붙인다 — 흐름 판단이 아니라 표시
+  const s = STATE, st = s?.run?.status;
+  const here = !s ? "input" : st === "paused" ? "approve" : st === "done" ? "evidence" : (st === "failed" || s.tree?.df_finite) ? "result" : "input";
+  document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("here", x.dataset.tab === here));
+}
 
 // ---------- 그래프 배치 (EDGES 만 읽어 그린다)
 function buildLayout(g) {
   const term = new Set(g.terminal_nodes);
   const chain = g.nodes.map(n => n.id).filter(id => !term.has(id));
-  const W = 210, Hh = 34, gap = 50, x0 = 180, y0 = 30;
+  const W = 210, Hh = 34, gap = 54, x0 = 176, y0 = 30;  // 노드 사이 20px: 엣지 라벨이 다음 노드에 겹치지 않게
   const pos = {};
   chain.forEach((id, i) => pos[id] = { x: x0, y: y0 + i * gap, w: W, h: Hh });
   const yLast = y0 + (chain.length - 1) * gap;
-  pos["fail"] = { x: 18, y: y0, w: 96, h: yLast + Hh - y0 };
+  pos["fail"] = { x: 14, y: y0, w: 96, h: yLast + Hh - y0 };
   const humans = g.human_nodes.map(h => pos[h]);
   const hy0 = Math.min(...humans.map(p => p.y)), hy1 = Math.max(...humans.map(p => p.y + p.h));
-  pos["wait_for_human"] = { x: 430, y: hy0, w: 100, h: hy1 - hy0 };
+  pos["wait_for_human"] = { x: 420, y: hy0, w: 100, h: hy1 - hy0 };
   pos["done"] = { x: x0, y: yLast + gap, w: W, h: Hh };
   return { pos, chain, order: chain.concat(["done"]) };
 }
@@ -181,10 +273,10 @@ function renderGraph() {
   const visited = new Set(); (STATE?.run?.path || []).forEach(p => { visited.add(p[0]); visited.add(p[2]); });
   const status = STATE?.run?.status, cur = STATE?.run?.current_node, paused = STATE?.run?.paused_at_node;
   const nameKo = Object.fromEntries(GRAPH.nodes.map(n => [n.id, n.name_ko]));
-  let out = `<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#a0aec0"/></marker>
-  <marker id="arg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#2f855a"/></marker>
-  <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#c53030"/></marker>
-  <marker id="ary" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#b7791f"/></marker></defs>`;
+  let out = `<defs><marker id="ar" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#a5b8c0"/></marker>
+  <marker id="arg" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#000"/></marker>
+  <marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#e91d2a"/></marker>
+  <marker id="ary" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8e8a25"/></marker></defs>`;
   const byFrom = {};
   GRAPH.edges.forEach(e => { if (!byFrom[e.from]) byFrom[e.from] = {}; if (!byFrom[e.from][e.to]) byFrom[e.from][e.to] = []; byFrom[e.from][e.to].push(e); });
   const plain = [], strong = [];
@@ -211,21 +303,24 @@ function renderGraph() {
     if (status === "done" && n.id === "done") cls += " done";
     const tall = p.h > 60;
     out += `<g class="${cls}" data-id="${n.id}"><rect x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>` +
-      (tall ? `<text x="${p.x + p.w / 2}" y="${p.y + 18}" text-anchor="middle" font-weight="bold">${esc(n.id)}</text><text x="${p.x + p.w / 2}" y="${p.y + 32}" text-anchor="middle">${esc(n.name_ko)}</text>`
-            : `<text x="${p.x + 8}" y="${p.y + 14}" font-weight="bold">${esc(n.id)}</text><text x="${p.x + 8}" y="${p.y + 27}" fill="#4a5568">${esc(n.name_ko)}</text>`) + `</g>`;
+      (tall ? `<text class="id" x="${p.x + p.w / 2}" y="${p.y + 18}" text-anchor="middle">${esc(n.id)}</text><text x="${p.x + p.w / 2}" y="${p.y + 32}" text-anchor="middle">${esc(n.name_ko)}</text>`
+            : `<text class="id" x="${p.x + 8}" y="${p.y + 14}">${esc(n.id)}</text><text x="${p.x + 8}" y="${p.y + 27}">${esc(n.name_ko)}</text>`) + `</g>`;
   });
   svg.innerHTML = out;
   svg.querySelectorAll("g.node").forEach(g => g.onclick = () => { const id = g.dataset.id; $("node-doc").innerHTML = `<b>${esc(id)}</b> (${esc(nameKo[id])}) · 쓰는 접두사: ${esc(GRAPH.nodes.find(n => n.id === id).writes.join(", "))}<br>${esc(GRAPH.node_docs[id] || "")}`; });
-  $("pathlist").innerHTML = (STATE?.run?.path || []).map(p => `<li>${esc(p[0])} —<b>${esc(p[1])}</b>→ ${esc(p[2])} <span class="note">(${esc(String(p[3]).slice(0, 19))}, 재개 ${p[4]})</span></li>`).join("");
+  $("pathlist").innerHTML = (STATE?.run?.path || []).map(p => `<li>${esc(p[0])} —<b>${esc(p[1])}</b>→ ${esc(p[2])} <span class="help" style="display:inline">(${esc(String(p[3]).slice(0, 19))}, 재개 ${p[4]})</span></li>`).join("") || `<li class="help">아직 없음</li>`;
 }
 
 // ---------- 표 헬퍼
-function table(header, rows, leftCols = 1) {
-  return `<table><tr>${header.map((h, i) => `<th class="${i < leftCols ? "l" : ""}">${esc(h)}</th>`).join("")}</tr>` +
+function table(header, rows, leftCols = 1, cls = "") {
+  return `<table class="${cls}"><tr>${header.map((h, i) => `<th class="${i < leftCols ? "l" : ""}">${esc(h)}</th>`).join("")}</tr>` +
     rows.map(r => `<tr>${r.map((c, i) => `<td class="${i < leftCols ? "l" : ""}">${c}</td>`).join("")}</tr>`).join("") + `</table>`;
 }
+function kv(rows) {  // [항목, 값] 표
+  return `<table class="kv">${rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="l">${v}</td></tr>`).join("")}</table>`;
+}
 function flagsTable(list) {
-  if (!list || !list.length) return `<div class="note">없음</div>`;
+  if (!list || !list.length) return `<div class="help">없음</div>`;
   return table(["심각도", "코드", "커브", "값", "임계(상수)", "상세"], list.map(f => [`<span class="sev-${f.severity}">${esc(f.severity)}</span>`, esc(f.code), esc(f.curve ?? ""), esc(JSON.stringify(f.value ?? "")).slice(0, 60), esc(f.threshold ?? ""), esc(f.detail ?? "")]), 6);
 }
 
@@ -314,36 +409,41 @@ async function resumeSnapshot() {
   if (!r.ok) { const e = $("r-error"); if (e) e.textContent = r.json.error || "오류"; }
 }
 
-// ---------- 결과(검토자 Rf_dc/Rd_dc 형식 4블록)
+// ---------- 결과(검토자 Rf_dc/Rd_dc 형식)
 async function renderResult() {
   const s = STATE; const el = $("result-body");
   if (!s || !s.tree?.df_finite) { el.innerHTML = `<div class="note">${s ? (s.run.status === "failed" ? `<span class="err">실패: ${esc(s.result.fail_reason)} (${esc(s.result.fail_code)})</span>` : "입력 승인 후 계산이 끝나면 결과가 표시됩니다.") : "아직 실행 결과가 없습니다."}</div>`; return; }
   if (!BLOCKS) { const r = await fetch("/api/blocks"); BLOCKS = r.ok ? await r.json() : null; }
-  const t = s.grid.tree;
-  let h = `<div class="note">격자: ${esc(t.dt_mode)} (N=${t.N}, T=${num(t.T, 4)}년, dt=${num(t.dt?.[0], 6)}) · 보간 ${esc(s.tree.interp_method_used)}/${esc(s.tree.interp_space_used)} · par 잔차 max ${num(s.par_check.max_abs_err, 3)} · Π DF 로그 잔차 ${num(s.fwd_spot_check.max_abs_err_log, 3)}
-    &nbsp; <a href="/api/export"><button class="primary">엑셀 내려받기 (Rf_dc / Rd_dc 형식)</button></a></div>`;
-  h += `<div class="curvetabs">${["RF", "RD"].map(c => `<button class="ghost ${CURVE_TAB === c ? "active" : ""}" onclick="CURVE_TAB='${c}';renderResult()">${c === "RF" ? "무위험이자율 (RF)" : "위험이자율 (RD)"}</button>`).join("")}</div>`;
+  const t = s.grid.tree, formula = !!(BLOCKS && BLOCKS.RF && BLOCKS.RF[0] && BLOCKS.RF[0].orient === "rows");
+  let h = `<div class="card"><div class="t"><span>요약</span><a href="/api/export"><button class="btn primary" style="margin:0">엑셀 내려받기 — Rf_dc / Rd_dc</button></a></div><div class="b">` +
+    kv([["프로필", esc(s.run.profile)], ["격자", `${esc(t.dt_mode)} · N=${t.N} · T=${num(t.T, 4)}년 · dt=${num(t.dt?.[0], 6)}`], ["보간", `${esc(s.tree.interp_method_used)} / ${esc(s.tree.interp_space_used)}`],
+        ["PAR 잔차 max", num(s.par_check.max_abs_err, 3)], ["Π DF 로그 잔차", num(s.fwd_spot_check.max_abs_err_log, 3)],
+        ["엑셀 시트", formula ? "검토자 Rf_dc/Rd_dc 그대로 — 살아있는 수식 + 원본 서식 (아래 표는 같은 수식의 파이썬 값)" : "값 시트(4블록) — 검토자 방식 프로필·주간/월간 격자에서만 수식 시트"]]) + `</div></div>`;
+  h += `<div class="curvetabs">${["RF", "RD"].map(c => `<button class="btn ${CURVE_TAB === c ? "active" : "secondary"}" onclick="CURVE_TAB='${c}';renderResult()">${c === "RF" ? "무위험이자율 RF" : "위험이자율 RD"}</button>`).join("")}</div>`;
   const c = CURVE_TAB, r = s.rows[c.toLowerCase()];
-  h += `<div class="note">선택 행: ${r ? `${r.row_index}행 ${esc(r.label_raw)}${r.block ? " [" + esc(r.block) + "]" : ""}${r.rating ? " " + esc(r.rating) : ""} (${esc(r.selected_by)})` : "—"}</div>`;
+  h += `<div class="eyebrow ${c === "RF" ? "sage" : "salmon"}">${c === "RF" ? "무위험이자율 · RF" : "위험이자율 · RD"}<div class="help" style="font:12px/1.4 var(--ff-body);text-transform:none;margin-top:2px">선택 행: ${r ? `${r.row_index}행 ${esc(r.label_raw)}${r.block ? " [" + esc(r.block) + "]" : ""}${r.rating ? " " + esc(r.rating) : ""} (${esc(r.selected_by)})` : "—"}</div></div>`;
   if (BLOCKS && BLOCKS[c]) {
     for (const b of BLOCKS[c]) {
-      h += `<h3>${b.index}. ${esc(b.title)}</h3>`;
+      h += `<div class="card"><div class="t"><span>${b.index}. ${esc(b.title)}</span><span class="help">${b.rows.length}행 × ${Math.max(...b.rows.map(x => x.values.length))}열</span></div><div class="b" style="padding:0">`;
       if (b.orient === "rows" || b.index === 1 || b.index === 3) {  // 행 지향(검토자 시트 배치: 행 = 항목, 열 = 마디/스텝)
         const n = Math.max(...b.rows.map(x => x.values.length)), hasX = b.rows.some(x => x.extra != null);
-        h += `<div class="scroll"><table><tr><th class="l">항목</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join("")}${hasX ? `<th>Σ/Π</th>` : ""}</tr>` +
+        h += `<div class="scroll" style="border:0;margin:0"><table><tr><th class="l">항목</th>${Array.from({ length: n }, (_, i) => `<th>${i + 1}</th>`).join("")}${hasX ? `<th>Σ/Π</th>` : ""}</tr>` +
           b.rows.map(x => `<tr><td class="l">${esc(x.label)}</td>${x.values.map(v => `<td>${fmtVal(v, x.fmt)}</td>`).join("")}${hasX ? `<td>${x.extra == null ? "" : fmtVal(x.extra, x.fmt)}</td>` : ""}</tr>`).join("") + `</table></div>`;
       } else {  // 스텝 지향(격자): 행 = 스텝
         const n = Math.max(...b.rows.map(x => x.values.length)), LIM = 300;
-        h += `<div class="scroll"><table><tr>${b.rows.map(x => `<th>${esc(x.label)}</th>`).join("")}</tr>` +
+        h += `<div class="scroll" style="border:0;margin:0"><table><tr>${b.rows.map(x => `<th>${esc(x.label)}</th>`).join("")}</tr>` +
           Array.from({ length: Math.min(n, LIM) }, (_, i) => `<tr>${b.rows.map(x => `<td>${fmtVal(x.values[i], x.fmt)}</td>`).join("")}</tr>`).join("") + `</table></div>` +
-          (n > LIM ? `<div class="help">화면에는 처음 ${LIM}개 스텝만 표시(전체 ${n}개는 엑셀 내려받기)</div>` : "");
+          (n > LIM ? `<div class="help" style="padding:4px 8px">화면에는 처음 ${LIM}개 스텝만 표시(전체 ${n}개는 엑셀 내려받기)</div>` : "");
       }
+      h += `</div></div>`;
     }
   }
   const sm = s.fwd_spot_check?.sample;
-  if (sm) h += `<h3>Π DF_fwd = DF_spot (감사인 Q11)</h3><div class="note">${esc(sm.curve)} step ${sm.step}, t=${num(sm.t, 6)}: Π df_step = ${num(sm.prod_df_fwd, 12)}, DF_spot = ${num(sm.df_spot, 12)}, 차이(로그) ${num(sm.diff_log, 3)}</div>`;
-  h += `<h3>플래그 (sanity_check 집계)</h3><h4>FAIL</h4>${flagsTable(s.sanity.fail)}<h4>APPROVAL_REQUIRED</h4>${flagsTable(s.sanity.approval_required)}<h4>WARN</h4>${flagsTable(s.sanity.warn)}`;
-  if (s.sensitivity?.table?.length) h += `<h3>민감도 (교차 보간법·공간 DF 상대차)</h3>` + table(["방법", "공간", "커브", "max |ΔDF/DF|"], s.sensitivity.table.map(x => [esc(x.method), esc(x.space), x.curve, x.max_rel_df_diff == null ? esc(x.note || "—") : x.max_rel_df_diff.toExponential(3)]), 3) + `<div class="note">주기 민감도: ${esc(JSON.stringify(s.sensitivity.freq_alt))}</div>`;
+  h += `<div class="card"><div class="t"><span>검증 · 플래그</span><span class="help">sanity_check 집계</span></div><div class="b">`;
+  if (sm) h += `<h4>Π DF_fwd = DF_spot (감사인 Q11)</h4><div class="note">${esc(sm.curve)} step ${sm.step}, t=${num(sm.t, 6)}: Π df_step = ${num(sm.prod_df_fwd, 12)}, DF_spot = ${num(sm.df_spot, 12)}, 차이(로그) ${num(sm.diff_log, 3)}</div>`;
+  h += `<h4>FAIL</h4>${flagsTable(s.sanity.fail)}<h4>APPROVAL_REQUIRED</h4>${flagsTable(s.sanity.approval_required)}<h4>WARN</h4>${flagsTable(s.sanity.warn)}`;
+  if (s.sensitivity?.table?.length) h += `<h4>민감도 (교차 보간법·공간 DF 상대차)</h4>` + table(["방법", "공간", "커브", "max |ΔDF/DF|"], s.sensitivity.table.map(x => [esc(x.method), esc(x.space), x.curve, x.max_rel_df_diff == null ? esc(x.note || "—") : x.max_rel_df_diff.toExponential(3)]), 3) + `<div class="help">주기 민감도: ${esc(JSON.stringify(s.sensitivity.freq_alt))}</div>`;
+  h += `</div></div>`;
   el.innerHTML = h;
 }
 
@@ -351,43 +451,50 @@ function renderApprove() {
   const s = STATE; const el = $("approve-body");
   if (!s || s.run.status !== "paused") {
     el.innerHTML = `<div class="note">정지 중인 승인 노드가 없습니다. (상태: ${esc(s?.run?.status ?? "—")})</div>
-      <h4>저장된 스냅샷에서 재개</h4><div class="note">서버를 다시 켰거나 다른 실행을 한 뒤 정지 중인 승인 건을 이어가려면 스냅샷 경로를 넣으세요(예: state/2025-12-31__CURVE1/snapshot__approve_input__1.json).</div>
-      <input id="r-snapshot" placeholder="state/<평가기준일>__<세트>/snapshot__<node>__<n>.json"><button class="ghost" onclick="resumeSnapshot()">스냅샷 불러오기</button><div id="r-error" class="err"></div>`;
+      <div class="card"><div class="t"><span>저장된 스냅샷에서 재개</span></div><div class="b steel">
+      <div class="help">서버를 다시 켰거나 다른 실행을 한 뒤 정지 중인 승인 건을 이어가려면 스냅샷 경로를 넣으세요(예: state/2025-12-31__CURVE1/snapshot__approve_input__1.json).</div>
+      <input id="r-snapshot" placeholder="state/<평가기준일>__<세트>/snapshot__<node>__<n>.json"><button class="btn secondary" onclick="resumeSnapshot()">스냅샷 불러오기</button><div id="r-error" class="err"></div></div></div>`;
     return;
   }
   const node = s.run.paused_at_node, kind = node.replace("approve_", ""), a = s["approval_" + kind];
   const codes = [...new Set((a.flags_seen || []).map(f => f.code))];
-  let h = `<h3>${esc(node)} — 사람 승인 대기</h3><div class="note">요청 시각 ${esc(a.requested_at)} · 스냅샷 sha256 ${esc((a.snapshot_sha256 || "").slice(0, 16))}… · 결정은 set_decision() 으로만 기록됩니다.</div>`;
+  const title = { input: "입력 승인", exception: "예외 승인", curve: "커브 최종 승인" }[kind] || node;
+  let h = `<div class="card"><div class="t"><span>${esc(title)} — ${esc(node)}</span><span class="sticker">사람 승인 대기</span></div><div class="b peach">
+    <div class="help">요청 시각 ${esc(a.requested_at)} · 스냅샷 sha256 ${esc((a.snapshot_sha256 || "").slice(0, 16))}… · 결정은 set_decision() 으로만 기록됩니다.</div>`;
   if (kind === "input") {
     const p = s.provenance, mc = p.method_choice, gs = p.grid_settings, rc = p.row_choice;
-    h += `<h4>프로필·격자(사용자 선택)</h4><div class="note">${esc(mc.profile)} — 선택자 ${esc(mc.chosen_by)} · 보간 ${esc(mc.interp_method)} / 공간 ${esc(mc.interp_space_grid)} · 노드 간격 ${esc(gs.step)} · 산출 기간 ${esc(gs.horizon_years)}년 · RF ${esc(rc.rf_row_index)}행 / RD ${esc(rc.rd_row_index)}행</div>` +
-      `<h4>출처(provenance)</h4>` + table(["항목", "값"], [["평가사", esc(p.source_agency)], ["고시일 / 평가기준일 / lag", `${esc(p.curve_date)} / ${esc(p.valuation_date)} / ${p.date_lag_days}`], ["파일 sha256", esc(s.input.file_sha256)], ["원본 사본", esc(p.raw_copy_path)], ["다운로드 시각 / 담당자", `${esc(p.downloaded_at)} / ${esc(p.operator)}`], ["사용 행 캡처", esc(p.capture_path ?? "없음")]], 2) +
+    h += `<h4>프로필·격자 (사용자 선택)</h4>` + kv([["프로필", `${esc(mc.profile)} — 선택자 ${esc(mc.chosen_by)}`], ["보간 / 공간", `${esc(mc.interp_method)} / ${esc(mc.interp_space_grid)}`], ["노드 간격 / 산출 기간", `${esc(gs.step)} / ${esc(gs.horizon_years)}년`], ["RF / RD 행", `${esc(rc.rf_row_index)}행 / ${esc(rc.rd_row_index)}행`]]) +
+      `<h4>출처 (provenance)</h4>` + kv([["평가사", esc(p.source_agency)], ["고시일 / 평가기준일 / lag", `${esc(p.curve_date)} / ${esc(p.valuation_date)} / ${p.date_lag_days}`], ["파일 sha256", esc(s.input.file_sha256)], ["원본 사본", esc(p.raw_copy_path)], ["다운로드 시각 / 담당자", `${esc(p.downloaded_at)} / ${esc(p.operator)}`], ["사용 행 캡처", esc(p.capture_path ?? "없음")]]) +
       `<h4>라벨 해석</h4><div class="note">RF 후보 ${s.labels.rf_candidates.length} · RD 후보 ${s.labels.rd_candidates.length} · 미해석 행 ${s.labels.unparsed_rows.length} · 매트릭스 ${s.input.n_rows}행, 헤더 ${s.input.header_ok ? "일치" : "불일치"}</div>`;
   }
   h += `<h4>flags_seen</h4>${flagsTable(a.flags_seen)}`;
-  if (codes.length) h += `<h4>확인(ack) — 코드 단위${kind === "exception" ? " (APPROVAL_REQUIRED 전부 확인해야 진행)" : ""}</h4>` + codes.map(c => `<label style="display:inline-block;margin-right:12px"><input type="checkbox" class="ack" value="${esc(c)}" style="width:auto"> ${esc(c)}</label>`).join("");
+  if (codes.length) h += `<h4>확인(ack) — 코드 단위${kind === "exception" ? " (APPROVAL_REQUIRED 전부 확인해야 진행)" : ""}</h4>` + codes.map(c => `<label style="display:inline-block;margin:0 12px 6px 0"><input type="checkbox" class="ack" value="${esc(c)}"> ${esc(c)}</label>`).join("");
   h += `<div class="grid2"><div><label>승인자</label><input id="a-approver" value="${esc(s.provenance.operator || "")}"></div><div><label>코멘트</label><input id="a-comment"></div></div>` +
-    `<button class="primary" onclick="decide('approved')">승인 → 같은 노드에서 재개</button> <button class="danger" onclick="decide('rejected')">거절 → fail</button><div id="a-error" class="err"></div>`;
+    `<button class="btn primary" onclick="decide('approved')">승인 → 같은 노드에서 재개</button><button class="btn secondary" onclick="decide('rejected')">거절 → fail</button><div id="a-error" class="err"></div>`;
   if (a.history?.length) h += `<h4>결정 이력</h4>` + table(["결정", "승인자", "시각", "코멘트", "ack"], a.history.map(x => [esc(x.decision), esc(x.approver), esc(x.timestamp), esc(x.comment), esc(x.acknowledged_codes.join(","))]), 5);
+  h += `</div></div>`;
   el.innerHTML = h;
 }
 function renderEvidence() {
   const s = STATE; const el = $("evidence-body");
   if (!s || !s.export?.dir) { el.innerHTML = `<div class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성). 결과 탭의 "엑셀 내려받기"는 승인 전에도 쓸 수 있습니다.</div>`; return; }
-  let h = `<h3>증빙 번들 — ${esc(s.export.dir)}</h3><div class="note">xlsx: ${s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"} · 승인 state: ${esc(s.result.approved_state_path ?? "—")} (sha256 ${esc((s.result.approved_state_sha256 || "").slice(0, 16))}…)</div>`;
-  h += `<h4>파일</h4><ul>${(s.export.files || []).map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`;
+  let h = `<div class="card"><div class="t"><span>증빙 번들 — ${esc(s.export.dir)}</span></div><div class="b steel">` +
+    kv([["xlsx", s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"], ["승인 state", `${esc(s.result.approved_state_path ?? "—")} (sha256 ${esc((s.result.approved_state_sha256 || "").slice(0, 16))}…)`]]) +
+    `<h4>파일</h4><ul style="margin:4px 0 8px">${(s.export.files || []).map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`;
   h += `<h4>체크리스트 (EVIDENCE_REQUIRED_ITEMS → 파일!시트!범위)</h4>` + table(["항목", "존재", "위치"], Object.entries(s.export.checklist_detail || {}).map(([k, v]) => [esc(k), v.exists ? "✔" : "✘", esc(v.location)]), 3);
   if (s.export.errors?.length) h += `<div class="err">${esc(s.export.errors.join("\n"))}</div>`;
-  if (s.export.warnings?.length) h += `<div class="note">${esc(s.export.warnings.join("; "))}</div>`;
+  if (s.export.warnings?.length) h += `<div class="help">${esc(s.export.warnings.join("; "))}</div>`;
+  h += `</div></div>`;
   el.innerHTML = h;
 }
 async function renderAll() {
   const st = STATE?.run?.status || "대기";
-  $("b-profile").textContent = "프로필: " + (STATE?.run?.profile || "—");
-  $("b-status").textContent = "상태: " + st; $("b-status").className = "badge " + st;
-  $("b-node").textContent = "현재 노드: " + (STATE?.run?.status === "paused" ? STATE.run.paused_at_node + " (승인 대기)" : (STATE?.run?.current_node || "—"));
-  $("b-run").textContent = "run: " + (STATE?.run?.run_id || "—") + (STATE?.run?.resume_n ? ` · 재개 ${STATE.run.resume_n}` : "");
-  renderGraph(); renderApprove(); renderEvidence();
+  const stKo = { paused: "승인 대기", running: "계산 중", done: "완료", failed: "실패" }[st] || st;
+  $("b-profile").textContent = "프로필 " + (STATE?.run?.profile || "—");
+  $("b-status").textContent = "상태: " + stKo + (STATE?.run?.status === "paused" ? " · " + STATE.run.paused_at_node : "");
+  $("b-node").textContent = "노드 " + (STATE?.run?.current_node || "—");
+  $("b-run").textContent = "run " + (STATE?.run?.run_id || "—") + (STATE?.run?.resume_n ? ` · 재개 ${STATE.run.resume_n}` : "");
+  renderGraph(); renderApprove(); renderEvidence(); markHere();
   $("state-json").textContent = STATE ? JSON.stringify(STATE, null, 1) : "—";
   await renderResult();
 }
@@ -423,6 +530,9 @@ async function init() {
   const oc = document.createElement("option"); oc.value = "__custom__"; oc.textContent = "직접 입력…"; $("f-operator").appendChild(oc);
   const st = await (await fetch("/api/state", { cache: "no-store" })).json(); STATE = st.state;
   await renderAll();
+  const tab = location.hash.replace("#", "");
+  if (["input", "approve", "result", "evidence", "state"].includes(tab)) showTab(tab);
+  else if (STATE) showTab(document.querySelector(".tabs button.here")?.dataset.tab || "input");
 }
 init().catch(e => showInitError("화면 초기화 실패: " + e.message));
 </script>
