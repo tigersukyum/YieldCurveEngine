@@ -1,6 +1,6 @@
 # GRAPH_SPEC — 1단계 이자율 커브 그래프 (자동 생성: graph/export_spec.py ← graph/step1_graph.py + graph_check.SCENARIOS)
 
-노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `1c62017129a6…` · spec `26146e2a9624…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
+노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `1e39341ec277…` · spec `107498b03251…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
 
 흐름의 유일한 정의는 `graph/step1_graph.py` 의 `EDGES` 배열이다. 이 문서는 그 배열을 사람이 읽기 좋게 펼친 것이며, 불일치가 있으면 코드가 우선한다(`python cb_valuation/step1_curve/graph/export_spec.py` 로 재생성). `python cb_valuation/step1_curve/graph/graph_check.py` 가 불변식·두 갈래 시나리오·노드 쓰기 추적·상수 지문 결정성을 검사한다.
 
@@ -459,7 +459,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `BASIS` | `("nominal_m2", "nominal_m4", "per_period_m2", "per_period_m4", "annual_eff", "continuous",` | 한공회 §3.7.4.4 |
 | `LABEL_GRAMMAR` | `{"RF": r"^\s*국고채", "RD": r"회사채\s*(AAA\|AA[+\-0]?\|A[+\-0]?\|BBB[+\-0]?\|BB[+\-0]?\|B[+\-0]` |  |
 | `PROVENANCE_REQUIRED_FIELDS` | `("source_agency", "curve_date", "valuation_date", "file_sha256", "raw_copy_path", "downloa` |  |
-| `PROVENANCE_APPROVAL_FIELDS` | `("capture_path",)` | 감사인 Q12-2 사용 행 캡처(이미지/PDF) ; 누락 → CAPTURE_MISSING 승인 |
+| `PROVENANCE_APPROVAL_FIELDS` | `()` | 사용자 결정 2026-09-08: 캡처 승인 절차 제거(앱이 캡처를 받지 않음 → CAPTURE_MISSING 발생 안 함). 감사인 Q12-2 캡처를 다시 요구하려면 ("capture_path",) |
 | `PROVENANCE_APPROVAL_FIELDS_PRODUCT` | `("instrument.rating_evidence.capture_path",)` | 감사인 Q13-1 등급 캡처 — 상품(등급) 정보가 입력된 경우에만 요구 |
 | `HUMAN_NODES` | `("approve_input", "approve_exception", "approve_curve")` |  |
 | `TERMINAL_NODES` | `("done", "fail", "wait_for_human")` |  |

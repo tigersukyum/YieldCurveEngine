@@ -48,7 +48,8 @@ class TestPipelineFixtureA(unittest.TestCase):
         self.assertEqual(s.run.status, "done")
         names = [p[1] for p in s.run.path]
         self.assertEqual(names[-1], "내보내기완료")
-        self.assertIn("승인필요플래그존재", names)  # fixture A: 캡처 없음 → CAPTURE_MISSING
+        codes = [f["code"] for f in s.sanity.approval_required] + [f["code"] for f in s.approval_input.flags_seen]
+        self.assertNotIn("CAPTURE_MISSING", codes)  # 사용자 결정 2026-09-08: PROVENANCE_APPROVAL_FIELDS=() → 캡처 승인 절차 없음
         self.assertEqual(s.result.next_step_interface["profile"], "DEFAULT")
 
     def test_gates_within_constants(self):

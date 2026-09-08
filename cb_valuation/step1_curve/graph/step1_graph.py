@@ -132,7 +132,7 @@ class Constants:
                      "BLOCK": r"(공모|사모)\s*무보증"}  # KIS-NET!B2, B39, B54, C42, C58
     PROVENANCE_REQUIRED_FIELDS = ("source_agency", "curve_date", "valuation_date", "file_sha256", "raw_copy_path", "downloaded_at", "operator", "grid_settings.step", "grid_settings.horizon_years",
                                   "method_choice.profile", "method_choice.chosen_by")  # 감사인 Q12 + 격자 설정(노드 간격·산출 기간) + 프로필 선택(PROFILE_SELECTION) ; 누락 → FAIL. 상품(만기·등급)은 선택 입력
-    PROVENANCE_APPROVAL_FIELDS = ("capture_path",)  # 감사인 Q12-2 사용 행 캡처(이미지/PDF) ; 누락 → CAPTURE_MISSING 승인
+    PROVENANCE_APPROVAL_FIELDS = ()  # 사용자 결정 2026-09-08: 캡처 승인 절차 제거(앱이 캡처를 받지 않음 → CAPTURE_MISSING 발생 안 함). 감사인 Q12-2 캡처를 다시 요구하려면 ("capture_path",)
     PROVENANCE_APPROVAL_FIELDS_PRODUCT = ("instrument.rating_evidence.capture_path",)  # 감사인 Q13-1 등급 캡처 — 상품(등급) 정보가 입력된 경우에만 요구
     HUMAN_NODES = ("approve_input", "approve_exception", "approve_curve")
     TERMINAL_NODES = ("done", "fail", "wait_for_human")

@@ -118,7 +118,7 @@
     <span id="b-node">노드 —</span>
     <span id="b-run">run —</span>
     <span id="b-status" class="callout">상태: 대기</span>
-    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08f</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08g</span>
   </span>
 </div>
 <div id="init-error"></div>
@@ -126,10 +126,7 @@
 <div id="left">
   <div class="tabs">
     <button data-tab="input" class="active">1 입력<span class="sticker sm">지금 여기</span></button>
-    <button data-tab="approve">2 승인<span class="sticker sm">지금 여기</span></button>
-    <button data-tab="result">3 결과<span class="sticker sm">지금 여기</span></button>
-    <button data-tab="evidence">4 증빙<span class="sticker sm">지금 여기</span></button>
-    <button data-tab="state">state JSON</button>
+    <button data-tab="result">2 결과<span class="sticker sm">지금 여기</span></button>
   </div>
 
   <div id="tab-input" class="panel active">
@@ -171,10 +168,7 @@
     <div id="run-error" class="err"></div>
   </div>
 
-  <div id="tab-approve" class="panel"><h2>승인</h2><div id="approve-body" class="note">정지 중인 승인 노드가 없습니다.</div></div>
   <div id="tab-result" class="panel"><h2>결과</h2><div id="result-body" class="note">아직 실행 결과가 없습니다.</div></div>
-  <div id="tab-evidence" class="panel"><h2>증빙</h2><div id="evidence-body" class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성).</div></div>
-  <div id="tab-state" class="panel"><h2>state JSON</h2><pre id="state-json">—</pre></div>
 </div>
 
 <div id="right">
@@ -204,7 +198,7 @@
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08f";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08g";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
@@ -226,7 +220,7 @@ function showTab(name) {
 }
 function markHere() {  // 상태(state)만 보고 "지금 볼 탭"에 스티커를 붙인다 — 흐름 판단이 아니라 표시
   const s = STATE, st = s?.run?.status;
-  const here = !s ? "input" : st === "paused" ? "approve" : st === "done" ? "evidence" : (st === "failed" || s.tree?.df_finite) ? "result" : "input";
+  const here = s ? "result" : "input";  // 실행 뒤에는 승인·결과·증빙 모두 결과 탭 안에 있다
   document.querySelectorAll(".tabs button").forEach(x => x.classList.toggle("here", x.dataset.tab === here));
 }
 
@@ -378,7 +372,7 @@ async function runApp() {
   BLOCKS = null;
   if (!r.ok) $("run-error").textContent = r.json.error || "오류";
   await renderAll();
-  if (r.ok) showTab("approve");
+  if (r.ok) showTab("result");
 }
 async function decide(decision) {
   const ack = [...document.querySelectorAll(".ack:checked")].map(x => x.value);
@@ -386,29 +380,42 @@ async function decide(decision) {
   BLOCKS = null;
   await renderAll();
   if (!r.ok) { const e = $("a-error"); if (e) e.textContent = r.json.error || "오류"; }
-  else if (STATE.run.status === "done") showTab("evidence");
-  else if (STATE.run.status === "failed") showTab("result");
-  else if (STATE.tree?.df_finite) showTab("result");
-}
-async function resumeSnapshot() {
-  const r = await api("POST", "/api/resume", { snapshot_path: $("r-snapshot").value.trim() });
-  BLOCKS = null; await renderAll();
-  if (!r.ok) { const e = $("r-error"); if (e) e.textContent = r.json.error || "오류"; }
+  showTab("result");
 }
 
-// ---------- 결과(검토자 Rf_dc/Rd_dc 형식)
+// ---------- 결과 탭: (정지 중이면) 승인 블록 → 요약(증빙 경로 포함) → 검토자 Rf_dc/Rd_dc 표
+function approvalBlock(s) {
+  const node = s.run.paused_at_node, kind = node.replace("approve_", ""), a = s["approval_" + kind];
+  const codes = [...new Set((a.flags_seen || []).map(f => f.code))];
+  const title = { input: "입력 확인", exception: "예외 확인", curve: "최종 확인" }[kind] || node;
+  const next = { input: "확인하면 계산을 시작합니다.", exception: "표시된 코드를 확인하면 최종 확인으로 넘어갑니다.", curve: "확인하면 엑셀·증빙 파일을 만듭니다." }[kind] || "";
+  let h = `<div class="card"><div class="t"><span>${esc(title)}</span><span class="sticker">확인 필요</span></div><div class="b peach"><div class="note">${esc(next)}</div>`;
+  if (kind === "input") {
+    const p = s.provenance, mc = p.method_choice, gs = p.grid_settings, rc = p.row_choice, rf = s.labels.rf_candidates.length, rd = s.labels.rd_candidates.length;
+    h += kv([["프로필", esc(mc.profile)], ["노드 간격 / 산출 기간", `${esc(gs.step)} / ${esc(gs.horizon_years)}년`], ["RF / RD 행", `${esc(rc.rf_row_index)}행 / ${esc(rc.rd_row_index)}행`],
+             ["평가사 · 고시일 · 평가기준일", `${esc(p.source_agency)} · ${esc(p.curve_date)} · ${esc(p.valuation_date)}`], ["매트릭스", `${s.input.n_rows}행, 헤더 ${s.input.header_ok ? "일치" : "불일치"}, RF 후보 ${rf} · RD 후보 ${rd}`], ["담당자", esc(p.operator)]]);
+  }
+  if (codes.length) h += `<h4>확인할 항목</h4>${flagsTable(a.flags_seen)}` + codes.map(c => `<label style="display:inline-block;margin:0 12px 6px 0"><input type="checkbox" class="ack" value="${esc(c)}"> ${esc(c)}</label>`).join("");
+  h += `<div class="grid2"><div><label>승인자</label><input id="a-approver" value="${esc(s.provenance.operator || "")}"></div><div><label>코멘트 (선택)</label><input id="a-comment"></div></div>` +
+    `<button class="btn primary" onclick="decide('approved')">확인 · 계속 ▸</button><button class="btn secondary" onclick="decide('rejected')">중단</button><div id="a-error" class="err"></div></div></div>`;
+  return h;
+}
 async function renderResult() {
   const s = STATE; const el = $("result-body");
-  if (!s || !s.tree?.df_finite) { el.innerHTML = `<div class="note">${s ? (s.run.status === "failed" ? `<span class="err">실패: ${esc(s.result.fail_reason)} (${esc(s.result.fail_code)})</span>` : "입력 승인 후 계산이 끝나면 결과가 표시됩니다.") : "아직 실행 결과가 없습니다."}</div>`; return; }
+  if (!s) { el.innerHTML = `<div class="note">아직 실행 결과가 없습니다. 입력 탭에서 실행하세요.</div>`; return; }
+  let h = "";
+  if (s.run.status === "paused") h += approvalBlock(s);
+  if (s.run.status === "failed") h += `<div class="card"><div class="t"><span>중단</span></div><div class="b salmon"><span class="err">${esc(s.result.fail_reason)} (${esc(s.result.fail_code)})</span></div></div>`;
+  if (!s.tree?.df_finite) { if (!h) h = `<div class="note">계산 중입니다.</div>`; el.innerHTML = h; return; }
   if (!BLOCKS) { const r = await fetch("/api/blocks"); BLOCKS = r.ok ? await r.json() : null; }
   const t = s.grid.tree, formula = !!(BLOCKS && BLOCKS.RF && BLOCKS.RF[0] && BLOCKS.RF[0].orient === "rows");
-  let h = `<div class="card"><div class="t"><span>요약</span><a href="/api/export"><button class="btn primary" style="margin:0">엑셀 내려받기 — Rf_dc / Rd_dc</button></a></div><div class="b">` +
-    kv([["프로필", esc(s.run.profile)], ["격자", `${esc(t.dt_mode)} · N=${t.N} · T=${num(t.T, 4)}년 · dt=${num(t.dt?.[0], 6)}`], ["보간", `${esc(s.tree.interp_method_used)} / ${esc(s.tree.interp_space_used)}`],
-        ["PAR 잔차 max", num(s.par_check.max_abs_err, 3)], ["Π DF 로그 잔차", num(s.fwd_spot_check.max_abs_err_log, 3)],
-        ["엑셀 시트", formula ? "검토자 Rf_dc/Rd_dc 그대로 — 살아있는 수식 + 원본 서식 (아래 표는 같은 수식의 파이썬 값)" : "값 시트(4블록) — 검토자 방식 프로필·주간/월간 격자에서만 수식 시트"]]) + `</div></div>`;
+  const rows = [["프로필", esc(s.run.profile)], ["격자", `${esc(t.dt_mode)} · N=${t.N} · ${num(t.T, 2)}년`], ["PAR 잔차 max", num(s.par_check.max_abs_err, 3)],
+                ["엑셀 시트", formula ? "검토자 Rf_dc/Rd_dc 그대로(살아있는 수식 + 원본 서식)" : "값 시트(4블록)"]];
+  if (s.export?.dir) rows.push(["증빙 폴더", esc(s.export.dir)], ["증빙 xlsx", s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"]);
+  h += `<div class="card"><div class="t"><span>요약</span><a href="/api/export"><button class="btn primary" style="margin:0">엑셀 내려받기 — Rf_dc / Rd_dc</button></a></div><div class="b">` + kv(rows) + `</div></div>`;
   h += `<div class="curvetabs">${["RF", "RD"].map(c => `<button class="btn ${CURVE_TAB === c ? "active" : "secondary"}" onclick="CURVE_TAB='${c}';renderResult()">${c === "RF" ? "무위험이자율 RF" : "위험이자율 RD"}</button>`).join("")}</div>`;
   const c = CURVE_TAB, r = s.rows[c.toLowerCase()];
-  h += `<div class="eyebrow ${c === "RF" ? "sage" : "salmon"}">${c === "RF" ? "무위험이자율 · RF" : "위험이자율 · RD"}<div class="help" style="font:12px/1.4 var(--ff-body);text-transform:none;margin-top:2px">선택 행: ${r ? `${r.row_index}행 ${esc(r.label_raw)}${r.block ? " [" + esc(r.block) + "]" : ""}${r.rating ? " " + esc(r.rating) : ""} (${esc(r.selected_by)})` : "—"}</div></div>`;
+  h += `<div class="eyebrow ${c === "RF" ? "sage" : "salmon"}">${c === "RF" ? "무위험이자율 · RF" : "위험이자율 · RD"}<div class="help" style="font:12px/1.4 var(--ff-body);text-transform:none;margin-top:2px">선택 행: ${r ? `${r.row_index}행 ${esc(r.label_raw)}${r.block ? " [" + esc(r.block) + "]" : ""}${r.rating ? " " + esc(r.rating) : ""}` : "—"}</div></div>`;
   if (BLOCKS && BLOCKS[c]) {
     for (const b of BLOCKS[c]) {
       h += `<div class="card"><div class="t"><span>${b.index}. ${esc(b.title)}</span><span class="help">${b.rows.length}행 × ${Math.max(...b.rows.map(x => x.values.length))}열</span></div><div class="b" style="padding:0">`;
@@ -425,53 +432,6 @@ async function renderResult() {
       h += `</div></div>`;
     }
   }
-  const sm = s.fwd_spot_check?.sample;
-  h += `<div class="card"><div class="t"><span>검증 · 플래그</span><span class="help">sanity_check 집계</span></div><div class="b">`;
-  if (sm) h += `<h4>Π DF_fwd = DF_spot (감사인 Q11)</h4><div class="note">${esc(sm.curve)} step ${sm.step}, t=${num(sm.t, 6)}: Π df_step = ${num(sm.prod_df_fwd, 12)}, DF_spot = ${num(sm.df_spot, 12)}, 차이(로그) ${num(sm.diff_log, 3)}</div>`;
-  h += `<h4>FAIL</h4>${flagsTable(s.sanity.fail)}<h4>APPROVAL_REQUIRED</h4>${flagsTable(s.sanity.approval_required)}<h4>WARN</h4>${flagsTable(s.sanity.warn)}`;
-  if (s.sensitivity?.table?.length) h += `<h4>민감도 (교차 보간법·공간 DF 상대차)</h4>` + table(["방법", "공간", "커브", "max |ΔDF/DF|"], s.sensitivity.table.map(x => [esc(x.method), esc(x.space), x.curve, x.max_rel_df_diff == null ? esc(x.note || "—") : x.max_rel_df_diff.toExponential(3)]), 3) + `<div class="help">주기 민감도: ${esc(JSON.stringify(s.sensitivity.freq_alt))}</div>`;
-  h += `</div></div>`;
-  el.innerHTML = h;
-}
-
-function renderApprove() {
-  const s = STATE; const el = $("approve-body");
-  if (!s || s.run.status !== "paused") {
-    el.innerHTML = `<div class="note">정지 중인 승인 노드가 없습니다. (상태: ${esc(s?.run?.status ?? "—")})</div>
-      <div class="card"><div class="t"><span>저장된 스냅샷에서 재개</span></div><div class="b steel">
-      <div class="help">서버를 다시 켰거나 다른 실행을 한 뒤 정지 중인 승인 건을 이어가려면 스냅샷 경로를 넣으세요(예: state/2025-12-31__CURVE1/snapshot__approve_input__1.json).</div>
-      <input id="r-snapshot" placeholder="state/<평가기준일>__<세트>/snapshot__<node>__<n>.json"><button class="btn secondary" onclick="resumeSnapshot()">스냅샷 불러오기</button><div id="r-error" class="err"></div></div></div>`;
-    return;
-  }
-  const node = s.run.paused_at_node, kind = node.replace("approve_", ""), a = s["approval_" + kind];
-  const codes = [...new Set((a.flags_seen || []).map(f => f.code))];
-  const title = { input: "입력 승인", exception: "예외 승인", curve: "커브 최종 승인" }[kind] || node;
-  let h = `<div class="card"><div class="t"><span>${esc(title)} — ${esc(node)}</span><span class="sticker">사람 승인 대기</span></div><div class="b peach">
-    <div class="help">요청 시각 ${esc(a.requested_at)} · 스냅샷 sha256 ${esc((a.snapshot_sha256 || "").slice(0, 16))}… · 결정은 set_decision() 으로만 기록됩니다.</div>`;
-  if (kind === "input") {
-    const p = s.provenance, mc = p.method_choice, gs = p.grid_settings, rc = p.row_choice;
-    h += `<h4>프로필·격자 (사용자 선택)</h4>` + kv([["프로필", `${esc(mc.profile)} — 선택자 ${esc(mc.chosen_by)}`], ["보간 / 공간", `${esc(mc.interp_method)} / ${esc(mc.interp_space_grid)}`], ["노드 간격 / 산출 기간", `${esc(gs.step)} / ${esc(gs.horizon_years)}년`], ["RF / RD 행", `${esc(rc.rf_row_index)}행 / ${esc(rc.rd_row_index)}행`]]) +
-      `<h4>출처 (provenance)</h4>` + kv([["평가사", esc(p.source_agency)], ["고시일 / 평가기준일 / lag", `${esc(p.curve_date)} / ${esc(p.valuation_date)} / ${p.date_lag_days}`], ["파일 sha256", esc(s.input.file_sha256)], ["원본 사본", esc(p.raw_copy_path)], ["다운로드 시각 / 담당자", `${esc(p.downloaded_at)} / ${esc(p.operator)}`], ["사용 행 캡처", esc(p.capture_path ?? "없음")]]) +
-      `<h4>라벨 해석</h4><div class="note">RF 후보 ${s.labels.rf_candidates.length} · RD 후보 ${s.labels.rd_candidates.length} · 미해석 행 ${s.labels.unparsed_rows.length} · 매트릭스 ${s.input.n_rows}행, 헤더 ${s.input.header_ok ? "일치" : "불일치"}</div>`;
-  }
-  h += `<h4>flags_seen</h4>${flagsTable(a.flags_seen)}`;
-  if (codes.length) h += `<h4>확인(ack) — 코드 단위${kind === "exception" ? " (APPROVAL_REQUIRED 전부 확인해야 진행)" : ""}</h4>` + codes.map(c => `<label style="display:inline-block;margin:0 12px 6px 0"><input type="checkbox" class="ack" value="${esc(c)}"> ${esc(c)}</label>`).join("");
-  h += `<div class="grid2"><div><label>승인자</label><input id="a-approver" value="${esc(s.provenance.operator || "")}"></div><div><label>코멘트</label><input id="a-comment"></div></div>` +
-    `<button class="btn primary" onclick="decide('approved')">승인 → 같은 노드에서 재개</button><button class="btn secondary" onclick="decide('rejected')">거절 → fail</button><div id="a-error" class="err"></div>`;
-  if (a.history?.length) h += `<h4>결정 이력</h4>` + table(["결정", "승인자", "시각", "코멘트", "ack"], a.history.map(x => [esc(x.decision), esc(x.approver), esc(x.timestamp), esc(x.comment), esc(x.acknowledged_codes.join(","))]), 5);
-  h += `</div></div>`;
-  el.innerHTML = h;
-}
-function renderEvidence() {
-  const s = STATE; const el = $("evidence-body");
-  if (!s || !s.export?.dir) { el.innerHTML = `<div class="note">증빙 번들이 아직 없습니다(최종 승인 후 생성). 결과 탭의 "엑셀 내려받기"는 승인 전에도 쓸 수 있습니다.</div>`; return; }
-  let h = `<div class="card"><div class="t"><span>증빙 번들 — ${esc(s.export.dir)}</span></div><div class="b steel">` +
-    kv([["xlsx", s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"], ["승인 state", `${esc(s.result.approved_state_path ?? "—")} (sha256 ${esc((s.result.approved_state_sha256 || "").slice(0, 16))}…)`]]) +
-    `<h4>파일</h4><ul style="margin:4px 0 8px">${(s.export.files || []).map(f => `<li>${esc(f.path)}</li>`).join("")}</ul>`;
-  h += `<h4>체크리스트 (EVIDENCE_REQUIRED_ITEMS → 파일!시트!범위)</h4>` + table(["항목", "존재", "위치"], Object.entries(s.export.checklist_detail || {}).map(([k, v]) => [esc(k), v.exists ? "✔" : "✘", esc(v.location)]), 3);
-  if (s.export.errors?.length) h += `<div class="err">${esc(s.export.errors.join("\n"))}</div>`;
-  if (s.export.warnings?.length) h += `<div class="help">${esc(s.export.warnings.join("; "))}</div>`;
-  h += `</div></div>`;
   el.innerHTML = h;
 }
 async function renderAll() {
@@ -481,8 +441,7 @@ async function renderAll() {
   $("b-status").textContent = "상태: " + stKo + (STATE?.run?.status === "paused" ? " · " + STATE.run.paused_at_node : "");
   $("b-node").textContent = "노드 " + (STATE?.run?.current_node || "—");
   $("b-run").textContent = "run " + (STATE?.run?.run_id || "—") + (STATE?.run?.resume_n ? ` · 재개 ${STATE.run.resume_n}` : "");
-  renderGraph(); renderApprove(); renderEvidence(); markHere();
-  $("state-json").textContent = STATE ? JSON.stringify(STATE, null, 1) : "—";
+  renderGraph(); markHere();
   await renderResult();
 }
 
@@ -515,7 +474,7 @@ async function init() {
   const st = await (await fetch("/api/state", { cache: "no-store" })).json(); STATE = st.state;
   await renderAll();
   const tab = location.hash.replace("#", "");
-  if (["input", "approve", "result", "evidence", "state"].includes(tab)) showTab(tab);
+  if (["input", "result"].includes(tab)) showTab(tab);
   else if (STATE) showTab(document.querySelector(".tabs button.here")?.dataset.tab || "input");
 }
 init().catch(e => showInitError("화면 초기화 실패: " + e.message));

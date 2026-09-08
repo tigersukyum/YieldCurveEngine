@@ -48,7 +48,7 @@
 | provenance | curve_date / valuation_date | ISO date\|None — 고시일 / 평가기준일(입력값) | runner |
 | provenance | date_lag_days | int\|None — `(valuation_date − curve_date).days`. 게이트 기준일역전_또는_지연초과(CURVE_DATE_MAX_LAG_DAYS), 코드 DATE_LAG | record_provenance |
 | provenance | raw_copy_path / downloaded_at / operator | str / ISO / str (\|None) — data/raw 사본(러너가 저장)·다운로드 시각·담당자(PROVENANCE_REQUIRED_FIELDS) | runner |
-| provenance | capture_path | str\|None — 행 렌더링 캡처(감사인 Q12). PROVENANCE_APPROVAL_FIELDS(결측 → CAPTURE_MISSING) | runner |
+| provenance | capture_path | str\|None — 행 렌더링 캡처(감사인 Q12). PROVENANCE_APPROVAL_FIELDS 는 2026-09-08 빈 튜플(캡처 승인 절차 제거) — 값이 있으면 기록만 | runner |
 | provenance | complete | bool — PROVENANCE_REQUIRED_FIELDS 전부 존재(`file_sha256` 는 `input.file_sha256` 에서 읽음). False → 출처불완전 → fail | record_provenance |
 | provenance.grid_settings | step / horizon_years | str\|None / float\|None — 산출 격자(앱 드롭다운: STEP_MODES 월간·주간·일간 → dt) 와 산출 기간(년, ≤ CURVE_HORIZON_Y). PROVENANCE_REQUIRED_FIELDS(미선택 → 출처불완전) | runner |
 | provenance.row_choice | rf_row_index / rd_row_index | int\|None — 사용자가 드롭다운으로 고른 RF/RD 행 번호(파일 행 = 평가사 엑셀 행). None 이면 select_rows 가 상품 정보(등급·발행형태)로 고른다 | runner |
@@ -237,7 +237,7 @@ JSON 왕복으로 NS/dict·tuple/list 차이를 없애므로 메모리 state 와
 
 | 노드 | flags_seen | 비고 |
 |---|---|---|
-| approve_input | `input_stage_flags(s, C)` | 순수 함수. `sanity_check` 도 같은 함수를 호출한다(판정 규칙 한 곳). 코드: DATE_LAG(APPROVAL_REQUIRED, 0 < lag ≤ CURVE_DATE_MAX_LAG_DAYS), CAPTURE_MISSING(APPROVAL_REQUIRED, PROVENANCE_APPROVAL_FIELDS 결측마다 1건), ZERO_VALUE_CELL(WARN), LLM_PARSER_USED(WARN), UNPARSED_ROWS(WARN) |
+| approve_input | `input_stage_flags(s, C)` | 순수 함수. `sanity_check` 도 같은 함수를 호출한다(판정 규칙 한 곳). 코드: DATE_LAG(APPROVAL_REQUIRED, 0 < lag ≤ CURVE_DATE_MAX_LAG_DAYS), CAPTURE_MISSING(APPROVAL_REQUIRED, PROVENANCE_APPROVAL_FIELDS 결측마다 1건 — 2026-09-08 이후 빈 튜플이라 발생하지 않음), ZERO_VALUE_CELL(WARN), LLM_PARSER_USED(WARN), UNPARSED_ROWS(WARN) |
 | approve_exception | `list(sanity.approval_required)` | APPROVAL_REQUIRED 만 |
 | approve_curve | `list(sanity.approval_required) + list(sanity.warn)` | APPROVAL_REQUIRED + WARN 전부 |
 
