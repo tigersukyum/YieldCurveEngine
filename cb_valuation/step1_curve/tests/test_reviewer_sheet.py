@@ -166,7 +166,10 @@ class TestWriteXlsx(unittest.TestCase):
             self.assertAlmostEqual(ws["C6"].value, s.grid.knots["RF"][0]["ytm"], delta=1e-15); self.assertEqual(ws["C4"].value, 13)  # openpyxl 은 16 유효숫자로 쓴다
             self.assertEqual(ws["B22"].font.name, "Calibri"); self.assertEqual(ws["C22"].font.name, "Calisto MT"); self.assertEqual(ws["C22"].number_format, "0.00000_ ")
             self.assertEqual(wb["Rd_dc"]["C40"].value, 10000); self.assertTrue(str(wb["Rd_dc"]["C19"].value).startswith("=PV("))
-            self.assertTrue(wb.loaded_theme)
+            # 색은 디자인 팔레트(XLSX_PALETTE=design): 라벨 열 sage, 제목 행 ink+흰 글씨, 검증 TRUE 셀 yellow, 테두리 ink; 원본 테마 XML 은 넣지 않는다
+            self.assertEqual(ws["B22"].fill.fgColor.rgb[-6:], RS.DESIGN["sage"]); self.assertEqual(ws["B1"].fill.fgColor.rgb[-6:], RS.DESIGN["ink"]); self.assertEqual(ws["B1"].font.color.rgb[-6:], RS.DESIGN["canvas"])
+            self.assertEqual(ws["C37"].fill.fgColor.rgb[-6:], RS.DESIGN["yellow"]); self.assertEqual(ws["C22"].border.left.color.rgb[-6:], RS.DESIGN["ink"]); self.assertEqual(ws["B22"].font.color.rgb[-6:], RS.DESIGN["ink"])
+            self.assertEqual(ws["C13"].fill.fgColor.rgb[-6:], RS.DESIGN["lime"]); self.assertIn(b"Office Theme", wb.loaded_theme)  # 원본 테마(보라 II) 대신 openpyxl 기본 테마
             blocks = dc_blocks(s, C, "RF")
             self.assertEqual([b["key"] for b in blocks], ["block1", "block2", "block3", "block4"]); self.assertEqual(blocks[0]["orient"], "rows")
             # 파이썬 모형(화면 값) vs 엔진 state: 이표 격자 DF 는 같은 정의(폐형식)라 1e-12 안에서 일치해야 한다

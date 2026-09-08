@@ -159,6 +159,7 @@ class Constants:
     XLSX_REQUIRED = True  # 사용자 결정 2026-09-07: xlsx 는 필수 증빙 — 없으면 export 엣지 'xlsx누락' → fail ; openpyxl 은 pyproject 선언 의존성(배포 PC 는 pip install .)
     XLSX_TEMPLATE = "reviewer_2024_dc"  # REV 8521 검토요구사항 xlsx 의 Rf_dc/Rd_dc 시트 서식 재현 + par 검증 행 추가 (docs/XLSX_TEMPLATE.md)
     XLSX_FORMULA_SHEETS = True  # 사용자 결정 2026-09-08: Rf_dc/Rd_dc 는 검토자 시트 그대로 **살아있는 수식 + 원본 서식**(io/reviewer_sheet, docs/REVIEWER_SHEET_SPEC.md). 적용 조건은 reviewer_sheet.applicable(검토자 방식 상수 + 주간/월간 격자); 불가하면 값 시트(XLSX_DC_BLOCKS)
+    XLSX_PALETTE = "design"  # 사용자 결정 2026-09-08: 시트 색은 검토자 원본('보라 II')을 베끼지 않고 앱과 같은 디자인 팔레트(ref/design/DESIGN-dell-1996.md; reviewer_sheet.DESIGN) — "original" 이면 원본 테마색
     XLSX_SHEETS = ("INPUT_RAW", "ROWS_USED", "PROVENANCE", "CONVENTIONS", "Rf_dc", "Rd_dc", "PAR_CHECK",
                    "FWD_SPOT_CHECK", "SENSITIVITY", "HEADLINE", "FLAGS", "APPROVALS", "RUN_PATH")  # 시트 순서 고정 ; Rf_dc/Rd_dc 는 행 지향(XLSX_DC_BLOCKS)
     XLSX_DC_STYLE = {"label_col": "B", "first_data_col": "C", "freeze_panes": "E1", "width_label": 18.7, "width_data": 12.7,

@@ -146,7 +146,7 @@ def _write_par_check_formula(ws, s, C, params: dict) -> str:
     B_all = Border(left=thin, right=thin, top=thin, bottom=thin); B_lr = Border(left=thin, right=thin)
     B_lrb = Border(left=thin, right=thin, bottom=thin); B_rtb = Border(right=thin, top=thin, bottom=thin)
     F = Font(name=L["font"], size=L["size"]); FB = Font(name=L["font"], size=L["size"], bold=True)
-    gray = PatternFill(patternType="solid", fgColor=Color(theme=0, tint=L["header_tint"]))
+    gray = PatternFill(patternType="solid", fgColor=Color(rgb=RS.DESIGN["steel"]) if C.XLSX_PALETTE == "design" else Color(theme=0, tint=L["header_tint"]))  # 헤더·평가일 행: 디자인 팔레트 steel(원본은 연회색)
     center = Alignment(horizontal="center")
     ws.column_dimensions["B"].width = L["width_B"]; ws.column_dimensions["C"].width = L["width_C"]
     vd = datetime.fromisoformat(s.provenance.valuation_date)
@@ -186,6 +186,11 @@ def _write_par_check_formula(ws, s, C, params: dict) -> str:
             put(rr, 7, f"=IFERROR((1/HLOOKUP($D{rr}*{m},{sheet}!$C${idx_row}:${Lq}${df_row},{df_row - idx_row + 1},FALSE))^(1/$D{rr})-1,0)", border=B_all, nf=L["nf_pct"])
             put(rr, 8, f"=SUMPRODUCT(($F{rr}/{m})/(1+$F{rr}/{m})^($D${first}:D{rr}*{m}))+1/(1+$F{rr}/{m})^(D{rr}*{m})", border=B_all, nf=L["nf_check"])
             put(rr, 9, f"=SUMPRODUCT(($F{rr}/{m})/(1+$G${first}:G{rr})^($D${first}:D{rr}))+1/(1+G{rr})^D{rr}", border=B_all, nf=L["nf_check"])
+        # 원본과 같은 병합: 헤더 Daycount(D:E)·Rate(F:G)·Par 검증(H:I), 평가일 행 '1확인'(H:I), 쿠폰지급일 라벨(B 첫 행~마지막 행)
+        for c1, c2 in ((4, 5), (6, 7), (8, 9)):
+            ws.merge_cells(start_row=hdr, start_column=c1, end_row=hdr, end_column=c2)
+        ws.merge_cells(start_row=base, start_column=8, end_row=base, end_column=9)
+        ws.merge_cells(start_row=first, start_column=2, end_row=first + n_rows - 1, end_column=2)
         rng = f"B{r}:I{first + n_rows - 1}"
         first_range = first_range or rng
         r = first + n_rows + 2
@@ -232,8 +237,8 @@ def write_xlsx(path: str, s, C):
     use_formula = formula_ok and C.XLSX_FORMULA_SHEETS
     params = {c: RS.params_from_state(s, C, c) for c in C.CURVE_IDS} if use_formula else {}
     for c, name in (("RF", "Rf_dc"), ("RD", "Rd_dc")):
-        if use_formula:  # 검토자 시트를 살아있는 수식·원본 서식으로(docs/REVIEWER_SHEET_SPEC.md)
-            ranges.update(RS.write_sheet(ws[name], wb, params[c]))
+        if use_formula:  # 검토자 시트를 살아있는 수식·원본 배치로(docs/REVIEWER_SHEET_SPEC.md); 색은 XLSX_PALETTE
+            ranges.update(RS.write_sheet(ws[name], wb, params[c], palette=C.XLSX_PALETTE))
         else:  # 값 시트(XLSX_DC_BLOCKS); 사유를 B2 에 남긴다
             ranges.update(_write_dc_sheet(ws[name], s, C, c))
             ws[name]["B2"] = f"값 시트(수식 시트 미적용: {formula_why if not formula_ok else 'XLSX_FORMULA_SHEETS=False'})"

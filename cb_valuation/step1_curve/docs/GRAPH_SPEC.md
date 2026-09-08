@@ -1,6 +1,6 @@
 # GRAPH_SPEC — 1단계 이자율 커브 그래프 (자동 생성: graph/export_spec.py ← graph/step1_graph.py + graph_check.SCENARIOS)
 
-노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `9f2240c04f6d…` · spec `4a4924fb2e9a…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
+노드 22개 · 엣지 69개 · 승인 노드 3개 · 종단 3개 · 게이트 8개 · 시나리오 55개 · 상수 fingerprint `ae1fa996fdd1…` · spec `00a8af5eef0d…`(스키마 1.1.0; graph_check 가 spec 다이제스트로 이 문서의 신선도를 검사)
 
 흐름의 유일한 정의는 `graph/step1_graph.py` 의 `EDGES` 배열이다. 이 문서는 그 배열을 사람이 읽기 좋게 펼친 것이며, 불일치가 있으면 코드가 우선한다(`python cb_valuation/step1_curve/graph/export_spec.py` 로 재생성). `python cb_valuation/step1_curve/graph/graph_check.py` 가 불변식·두 갈래 시나리오·노드 쓰기 추적·상수 지문 결정성을 검사한다.
 
@@ -475,6 +475,7 @@ Rf_dc / Rd_dc (행 지향, XLSX_DC_BLOCKS; 서식 XLSX_DC_STYLE = {"label_col": 
 | `XLSX_REQUIRED` | `True` | 사용자 결정 2026-09-07: xlsx 는 필수 증빙 — 없으면 export 엣지 'xlsx누락' → fail ; openpyxl 은 pyproject 선언 의존성(배포 PC 는 pip install .) |
 | `XLSX_TEMPLATE` | `"reviewer_2024_dc"` | REV 8521 검토요구사항 xlsx 의 Rf_dc/Rd_dc 시트 서식 재현 + par 검증 행 추가 (docs/XLSX_TEMPLATE.md) |
 | `XLSX_FORMULA_SHEETS` | `True` | 사용자 결정 2026-09-08: Rf_dc/Rd_dc 는 검토자 시트 그대로 **살아있는 수식 + 원본 서식**(io/reviewer_sheet, docs/REVIEWER_SHEET_SPEC.md). 적용 조건은 reviewer_sheet.applicable(검토자 방식 상수 + 주간/월간 격자); 불가하면 값 시트(XLSX_DC_BLOCKS) |
+| `XLSX_PALETTE` | `"design"` | 사용자 결정 2026-09-08: 시트 색은 검토자 원본('보라 II')을 베끼지 않고 앱과 같은 디자인 팔레트(ref/design/DESIGN-dell-1996.md; reviewer_sheet.DESIGN) — "original" 이면 원본 테마색 |
 | `XLSX_SHEETS` | `("INPUT_RAW", "ROWS_USED", "PROVENANCE", "CONVENTIONS", "Rf_dc", "Rd_dc", "PAR_CHECK",` |  |
 | `XLSX_DC_STYLE` | `{"label_col": "B", "first_data_col": "C", "freeze_panes": "E1", "width_label": 18.7, "widt` |  |
 | `XLSX_DC_BLOCKS` | `[` | (블록 제목, [(행 라벨, 원천 state 접두사, 숫자 서식)]) — 열 = 마디(블록 1·3) 또는 격자 스텝(블록 2·4) ; 라벨·서식은 REV Rf_dc r3~r38 원문({…} 커브별 치환: rate=RISK FREE RATE\|RISKY RATE, period=HALF-YEAR\|QUARTER) |

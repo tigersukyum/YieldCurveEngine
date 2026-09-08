@@ -512,28 +512,68 @@ def _run_style(runs, c: int) -> int:
     return -1
 
 
-def _color(d):
-    from openpyxl.styles import Color
+# 디자인 팔레트(ref/design/DESIGN-dell-1996.md; 사용자 결정 2026-09-08 — 검토자 원본의 '보라 II' 색을 그대로 베끼지 않고 앱과 같은 색 체계로):
+# 검은 잉크·흰 캔버스, 카탈로그 색블록(sage·sky·lime·steel·periwinkle·peach), 노란 스티커. 테두리는 전부 검은 헤어라인, 글씨는 검정(제목 행만 흰색).
+DESIGN = {"ink": "000000", "canvas": "FFFFFF", "yellow": "FCC20F", "sage": "B3BD95", "lime": "C0D4A7", "sky": "9AB6C8", "steel": "A5B8C0", "peri": "8C9AE0", "peach": "E6915D"}
+# 원본 역할(테마 색+tint) → 디자인 토큰: 라벨 열(theme3/0.8) sage, 강조 라벨(theme3/0.6) steel, 입력·테너 강조(theme6/0.8) sky, 강한 강조(theme6/0.6) periwinkle,
+# 선도 행(theme2/−0.1) lime, Rd 분기 첫 주(theme9/0.8) peach, 제목 행·탭(theme4/−0.5) ink, 노랑(FFFF00)·검증 TRUE 셀(gray0625 패턴) yellow 스티커, 흰색(theme0) canvas
+PALETTES = ("design", "original")
+
+
+def _design_fill(d):
     if not d:
         return None
-    if "rgb" in d: return Color(rgb=d["rgb"])
-    if "theme" in d: return Color(theme=d["theme"], tint=d["tint"])
-    if "indexed" in d: return Color(indexed=d["indexed"])
+    if "theme" in d:
+        t, tint = d["theme"], d["tint"]
+        if t == 0: return DESIGN["canvas"]
+        if t == 3: return DESIGN["sage"] if tint >= 0.7 else DESIGN["steel"]
+        if t == 6: return DESIGN["sky"] if tint >= 0.7 else DESIGN["peri"]
+        if t == 2: return DESIGN["lime"]
+        if t == 9: return DESIGN["peach"]
+        if t in (4, 7): return DESIGN["ink"]
+        return DESIGN["canvas"]
+    if "rgb" in d:
+        rgb = d["rgb"].upper()
+        if rgb.endswith("FFFF00"): return DESIGN["yellow"]
+        if rgb == "00000000": return None
+        return rgb[-6:]
     return None
 
 
-def _style_objects(st: dict):
-    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+def _color(d, kind="fill", palette="design"):
+    """kind: font | fill | border. palette='original' 이면 원본 테마 색(theme+tint) 그대로(테마 XML 필요)."""
+    from openpyxl.styles import Color
+    if not d:
+        return None
+    if palette == "original":
+        if "rgb" in d: return Color(rgb=d["rgb"])
+        if "theme" in d: return Color(theme=d["theme"], tint=d["tint"])
+        if "indexed" in d: return Color(indexed=d["indexed"])
+        return None
+    if kind == "font":  # 제목 행의 흰 글씨만 유지, 나머지(회색 tint·남색·빨강 잔재)는 전부 잉크
+        white = ("theme" in d and d["theme"] == 0 and d["tint"] >= 0) or ("rgb" in d and d["rgb"].upper().endswith("FFFFFF"))
+        return Color(rgb=DESIGN["canvas"] if white else DESIGN["ink"])
+    if kind == "border":
+        return Color(rgb=DESIGN["ink"])
+    rgb = _design_fill(d)
+    return Color(rgb=rgb) if rgb else None
+
+
+def _style_objects(st: dict, palette: str = "design"):
+    from openpyxl.styles import Font, PatternFill, Border, Side, Alignment, Color
     f = st["font"]; fl = st["fill"]; b = st["border"]; a = st["align"]
-    font = Font(name=f[0], size=f[1], bold=f[2], italic=f[3], color=_color(f[4]))
-    if fl[0]:
+    font = Font(name=f[0], size=f[1], bold=f[2], italic=f[3], color=_color(f[4], "font", palette))
+    if fl[0] == "gray0625" and palette == "design":  # 검증 TRUE 셀의 회색 패턴 → 노란 스티커(디자인에는 패턴이 없다)
+        fill = PatternFill(patternType="solid", fgColor=Color(rgb=DESIGN["yellow"]))
+    elif fl[0]:
         kw = {"patternType": fl[0]}
-        if fl[1]: kw["fgColor"] = _color(fl[1])
-        if fl[2]: kw["bgColor"] = _color(fl[2])
+        fg, bg = _color(fl[1], "fill", palette), _color(fl[2], "fill", palette)
+        if fg: kw["fgColor"] = fg
+        if bg and palette == "original": kw["bgColor"] = bg
         fill = PatternFill(**kw)
     else:
         fill = PatternFill()
-    sides = [Side(style=x[0], color=_color(x[1])) if x else Side() for x in b]
+    sides = [Side(style=x[0], color=_color(x[1], "border", palette)) if x else Side() for x in b]
     border = Border(left=sides[0], right=sides[1], top=sides[2], bottom=sides[3])
     align = Alignment(horizontal=a[0], vertical=a[1], indent=a[2], wrap_text=a[3] or None)
     return font, fill, border, align, st["nf"]
@@ -547,21 +587,24 @@ def number_format_of(p: Params, row: int) -> str:
 
 
 # ----------------------------------------------------------------------------- 작성기
-def write_sheet(ws, wb, p: Params) -> dict:
-    """ws 에 수식·서식을 쓴다. 반환: cell_map 용 범위 {'RF:block1': 'B3:N7', 'RF:row22': 'C22:AP22', …}."""
+def write_sheet(ws, wb, p: Params, palette: str = "design") -> dict:
+    """ws 에 수식·서식을 쓴다. palette='design'(기본, DESIGN 팔레트) | 'original'(검토자 원본 테마색). 반환: cell_map 용 범위 {'RF:block1': 'B3:N7', 'RF:row22': 'C22:AP22', …}."""
     from openpyxl.styles import Color
+    if palette not in PALETTES:
+        raise ValueError(f"palette {palette!r} 는 {PALETTES} 중 하나")
     L = layout()["sheets"][p.sheet]
     styles = L["styles"]
     cache = {}
 
     def sty(sid):
         if sid not in cache:
-            cache[sid] = _style_objects(styles[sid])
+            cache[sid] = _style_objects(styles[sid], palette)
         return cache[sid]
-    wb.loaded_theme = theme_bytes()
+    if palette == "original":
+        wb.loaded_theme = theme_bytes()  # 원본 테마('보라 II')가 있어야 theme+tint 색이 원본과 같아진다
     ws.sheet_format.defaultColWidth = L["default_col_width"]; ws.sheet_format.defaultRowHeight = L["default_row_height"]; ws.sheet_format.customHeight = True
     ws.sheet_view.showGridLines = L["show_grid_lines"]; ws.sheet_view.zoomScaleNormal = L["zoom"]
-    ws.sheet_properties.tabColor = _color(L["tab_color"])
+    ws.sheet_properties.tabColor = _color(L["tab_color"], "fill", palette)
     ws.freeze_panes = L["freeze_panes"]
     for k, w in L["col_widths"].items():
         ws.column_dimensions[k].width = w

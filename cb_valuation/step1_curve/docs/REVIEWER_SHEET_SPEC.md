@@ -95,6 +95,22 @@
 정수 지수(`^4`, `^52`, `^13q`)는 Excel 이 right-to-left 이진 거듭제곱으로 계산한다((x²)² 등) — 파이썬 모형 `_xpow` 가 같은 순서를 쓴다(libm pow 로는 496/520 셀 ≤1e-14 어긋남).
 행 13 은 **정적 순환 참조가 없도록** 분기말 앵커 셀만 절대참조한다(범위 INDEX 로 행 32 전체를 참조하면 Excel 이 순환으로 판정) — `tests/test_reviewer_sheet.py::test_no_circular_reference`.
 
+## 3a. 색 팔레트 (사용자 결정 2026-09-08: 원본 '보라 II' 색을 베끼지 않고 앱과 같은 디자인 토큰으로 — `Constants.XLSX_PALETTE="design"`, `reviewer_sheet.DESIGN`)
+배치·글꼴·숫자서식·테두리 굵기는 §3 원본 그대로 두고 **색만** `ref/design/DESIGN-dell-1996.md` 팔레트로 바꾼다. `XLSX_PALETTE="original"` 이면 원본 테마색(테마 XML 포함)으로 돌아간다.
+| 원본 역할(테마 색+tint) | 디자인 토큰 | 쓰이는 곳 |
+|---|---|---|
+| 제목 행 채우기 theme4/−0.5(짙은 보라), 탭 색 | ink `000000` (글씨 흰색 유지) | 1행, 시트 탭 |
+| 라벨 열 theme3/0.8(연보라) | sage `B3BD95` | B열 라벨 |
+| 강조 라벨 theme3/0.6 | steel `A5B8C0` | 검증 행 라벨 등 |
+| 입력·테너 강조 theme6/0.8(연남색) | sky `9AB6C8` | 행 6·11 테너 열, 행 18 테너 분기 |
+| 강한 강조 theme6/0.6 | periwinkle `8C9AE0` | 행 11 테너 주 등 |
+| 선도 행 theme2/−0.1 | lime `C0D4A7` | 행 13·35 등 선도 |
+| Rd 분기 첫 주 theme9/0.8 | peach `E6915D` | Rd 행 33 |
+| 노랑 FFFF00, 검증 TRUE 셀의 gray0625 패턴 | yellow `FCC20F`(단색) | C37·C38, Rd C35·C36·C51·C52, TC50 |
+| 테두리(보라 thin/thick) | ink thin/thick | 전부 |
+| 글씨(회색 tint·남색 FF002060·빨강 잔재) | ink; 제목 행만 canvas 흰색 | 전부 |
+PAR_CHECK 시트도 같은 팔레트(헤더·평가일 행 steel, 테두리 ink). 원리: 검은 헤어라인·평면 색블록·노란 스티커·그림자 없음.
+
 ## 3. 서식 (원본 그대로; `io/reviewer_dc_layout.json`)
 - 테마 **'보라 II'**(theme1.xml 을 통합문서에 그대로 넣음 → 테마색+tint 가 원본과 동일), 탭 색 theme4/−0.5, 눈금선 없음, 틀 고정 E1, 열 폭 A 1.5 / B 18.66 / 나머지 12.66, 행 높이 14.9(1행 22.5·Rd 18.75, Rd 14행 12.0), 행 개요 수준 1(Rf 15~38, Rd 14~53), thickTop/thickBot 행 플래그.
 - 글꼴: 라벨 Calibri 8(굵게 = 검증 행), 데이터 **Calisto MT 8**, 섹션 제목 Calibri 11 굵게 `FF002060`, 1행 맑은 고딕 11 흰색 굵게 + 보라 채우기(theme4/−0.5) + 아래 thick 테두리.
