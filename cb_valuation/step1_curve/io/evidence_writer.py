@@ -178,7 +178,7 @@ def _write_par_check_formula(ws, s, C, params: dict) -> str:
         put(base, 9, border=B_rtb)
         for k in range(1, n_rows + 1):
             rr = first + k - 1; prev = base if k == 1 else rr - 1
-            put(rr, 2, "쿠폰지급일" if k == 1 else None, border=B_all if k == 1 else (B_lrb if k == n_rows else B_lr), align=center if k == 1 else None)
+            put(rr, 2, "쿠폰지급일" if k == 1 else None, border=B_all if k == 1 else (B_lrb if k == n_rows else B_lr), align=Alignment(horizontal="center", vertical="center") if k == 1 else None)  # B 열은 세로 병합 → 가운데
             put(rr, 3, f"=EOMONTH(C{prev},{months})", border=B_all, nf=L["nf_date"])
             put(rr, 4, f"=YEARFRAC($C${base},C{rr},0)", border=B_all)
             put(rr, 5, f"=(C{rr}-$C${base})/365", border=B_all, nf=L["nf_act"])
