@@ -29,6 +29,20 @@ python -m cb_valuation.step1_curve.app.server --open   # 같은 것(포트 변�
 
 화면 디자인은 `ref/design/DESIGN-dell-1996.md`(디자인 토큰: 검은 페이지 프레임, 평면 색블록 리본 카드, Arial Black 제목·Helvetica 굵은 UI 라벨·Times 본문, 모서리 0, 그림자 없음)를 따른다. 탭은 **1 입력 · 2 결과** 두 개다(승인 확인·증빙 경로·중단 사유는 결과 탭 안에 나온다). 노란 "지금 여기" 스티커가 state 만 보고 볼 탭을 가리킨다. 캡처 승인 절차(CAPTURE_MISSING)는 2026-09-08 사용자 결정으로 없앴다(PROVENANCE_APPROVAL_FIELDS=()). 보라색 블록은 페이지당 하나(실행)이며, 상단 배너 오른쪽 연보라 글씨가 현재 상태다(사용자 결정: 빨강 대신 보라 계열).
 
+## 링크로 실행 (GitHub Pages — 설치 없이 브라우저 안에서 계산)
+`start_app.bat` 없이도 링크만 열면 앱이 뜨게 하는 방식이다. 서버를 어디에 두는 것이 아니라, **브라우저 안에서 파이썬 엔진을 그대로 돌린다**(Pyodide = WebAssembly 파이썬). 화면 코드는 로컬 서버 모드와 같고, `fetch("/api/…")` 만 브라우저 안의 파이썬 호출(`app/browser_api.py`)로 바꿔친다.
+- **데이터는 PC 를 떠나지 않는다**: 매트릭스·산출물은 브라우저 메모리 파일시스템(`/work`)에만 있다. 외부에서 받는 것은 코드뿐(Pyodide 는 jsDelivr CDN, openpyxl 은 PyPI 휠). 탭을 닫으면 사라지므로 xlsx 와 증빙 zip 은 화면의 버튼으로 저장한다.
+- **배포본에는 금리표·고객 자료가 없다**: `tools/build_web.py` 가 `tests/fixtures`, `reference/xl_*.txt`, `docs/`, `ref/` 를 제외하고 패키지를 zip 으로 묶는다(포함되면 빌드가 실패한다).
+
+준비 순서
+1. 저장소를 GitHub 에 올린다(회사 조직의 **비공개** 저장소; `git remote add origin … && git push -u origin main`). 이 저장소는 fixture 금리표를 담고 있으므로 공개 저장소로 두지 않는다.
+2. 저장소 Settings → Pages → **Source: GitHub Actions**. `main` 에 push 하면 `.github/workflows/pages.yml` 이 테스트·그래프 검사 → `python tools/build_web.py` → Pages 배포를 한다. 주소는 `https://<조직 또는 계정>.github.io/<저장소 이름>/` 이다.
+3. 비공개 저장소의 Pages 는 **GitHub Pro / Team / Enterprise** 플랜에서만 켤 수 있다(무료 플랜은 공개 저장소만). Team 플랜에서도 Pages 주소 자체는 누구나 열 수 있는 공개 URL 이고, 열람을 조직 구성원으로 제한하려면 Enterprise Cloud 의 "private Pages" 가 필요하다.
+4. 유료 플랜을 쓰지 않으려면: 별도의 **공개 저장소**(예 `cb-curve-app`)를 만들고 `python tools/build_web.py --out <그 저장소 폴더>` 로 만든 `index.html`·`cb_valuation.zip`·`.nojekyll` 만 커밋해 그 저장소의 Pages 를 켠다. 배포본에는 코드만 있고 금리표·고객 자료는 없다(엔진 코드가 공개된다는 점만 결정하면 된다).
+5. 로컬에서 미리 보기: `python tools/build_web.py` 후 `python -m http.server 8790 --directory web` → `http://127.0.0.1:8790/` (인터넷 필요 — CDN·PyPI).
+
+사용자 쪽에서 보이는 것: 링크를 열면 검은 화면에 "계산 엔진을 불러오는 중…"(처음 10~30초, 이후는 브라우저 캐시로 빨라짐) → 평소와 같은 화면. 확인·계산·엑셀 내려받기·증빙 zip 내려받기가 모두 브라우저 안에서 끝난다. 명령행·Excel COM 검증 도구는 로컬 설치 모드에서만 쓴다.
+
 ## 화면이 이상할 때
 - 드롭다운이 비어 있거나 오른쪽 그래프가 없거나 파일을 끌어다 놓아도 반응이 없으면 **옛 서버 인스턴스가 응답하는 경우**다(같은 포트에 옛 서버가 남아 있으면 화면은 새 것, API 는 옛 것이 된다). `start_app.bat` 은 시작 전에 옛 서버를 모두 닫고, 서버는 포트 공유를 거부하며 옛 인스턴스를 교체한다. 화면 상단에 빨간 안내가 뜨면 그 지시를 따르고, 헤더의 `viewer <버전>` 배지와 서버 창의 `v<버전>` 이 같은지 확인한다(다르면 Ctrl+F5).
 - 브라우저를 **관리자 권한**으로 띄운 경우 Windows 가 탐색기에서의 드래그 앤 드롭을 막는다 — 그때는 "파일 선택" 버튼을 쓰거나 일반 권한 창으로 연다.

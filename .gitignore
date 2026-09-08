@@ -36,3 +36,6 @@ config/
 
 # 화면 "엑셀 내려받기" 산출물(승인 전 임시 xlsx)
 exports/
+
+# 정적 배포본(tools/build_web.py 가 재생성; GitHub Actions 가 빌드해 Pages 에 올림)
+web/

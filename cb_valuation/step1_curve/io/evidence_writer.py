@@ -255,6 +255,19 @@ def write_xlsx(path: str, s, C):
     return ranges, rng
 
 
+def evidence_zip_bytes(s, base_dir: str) -> bytes:
+    """증빙 번들 폴더(state.export.dir) 전체를 zip 바이트로(화면 '증빙 zip 내려받기'; 브라우저 실행에서는 파일이 메모리에만 있어 이 경로가 유일한 반출)."""
+    import io as _io, zipfile
+    d = os.path.join(base_dir, s.export.dir)
+    buf = _io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for root, _dirs, files in os.walk(d):
+            for f in sorted(files):
+                p = os.path.join(root, f)
+                z.write(p, os.path.relpath(p, os.path.dirname(d)).replace("\\", "/"))
+    return buf.getvalue()
+
+
 def export_xlsx(s, C, base_dir: str) -> str:
     """화면 '엑셀 내려받기': 현재 state 로 같은 형식의 통합문서를 exports/ 에 쓴다(증빙 번들과 별개, 승인 불필요). 반환 경로."""
     d = os.path.join(base_dir, "exports"); os.makedirs(d, exist_ok=True)

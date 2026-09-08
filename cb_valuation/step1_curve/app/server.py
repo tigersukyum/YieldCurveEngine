@@ -14,7 +14,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from ..graph import step1_graph as G
 from ..graph import snapshot as SNAP
 from ..io.matrix_parser import read_matrix_bytes, preview
-from ..io.evidence_writer import dc_blocks, export_xlsx
+from ..io.evidence_writer import dc_blocks, export_xlsx, evidence_zip_bytes
 from . import runner as R
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +22,7 @@ PKG = os.path.dirname(HERE)
 SESSION = {"state": None, "C": None, "base_dir": os.getcwd(), "last_path": None, "error": None}
 LOCK = threading.Lock()
 C0 = G.Constants
-APP_VERSION = "2026-09-08i"  # 화면(viewer.html 의 VIEWER_VERSION)과 같아야 한다 — 옛 서버/옛 화면 조합을 화면이 감지한다
+APP_VERSION = "2026-09-08j"  # 화면(viewer.html 의 VIEWER_VERSION)과 같아야 한다 — 옛 서버/옛 화면 조합을 화면이 감지한다
 
 
 def _state_json(s):
@@ -30,14 +30,18 @@ def _state_json(s):
 
 
 def _operators(base_dir: str) -> list:
-    """담당자 드롭다운 목록: config/operators.json (없으면 OS 로그인 이름으로 생성)."""
+    """담당자 기본값 목록: config/operators.json (없으면 OS 로그인 이름으로 생성; 브라우저(Pyodide) 실행처럼 로그인 이름이 없으면 빈 목록 → 화면에서 직접 입력)."""
+    try:
+        default = [getpass.getuser()]
+    except Exception:  # Pyodide 등 사용자 이름이 없는 환경
+        default = []
     p = os.path.join(base_dir, "config", "operators.json")
     if not os.path.exists(p):
         os.makedirs(os.path.dirname(p), exist_ok=True)
         with open(p, "w", encoding="utf-8", newline="\n") as fh:
-            json.dump({"operators": [getpass.getuser()]}, fh, ensure_ascii=False, indent=1)
+            json.dump({"operators": default}, fh, ensure_ascii=False, indent=1)
     with open(p, encoding="utf-8") as fh:
-        return list(json.load(fh).get("operators") or [getpass.getuser()])
+        return list(json.load(fh).get("operators") or default)
 
 
 def graph_payload():
@@ -117,6 +121,13 @@ class H(BaseHTTPRequestHandler):
                     data = fh.read()
                 return self._send(200, data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   {"Content-Disposition": f'attachment; filename="{os.path.basename(path)}"'})
+            if self.path.startswith("/api/evidence_zip"):
+                with LOCK:
+                    s = SESSION["state"]
+                    if s is None or not s.export.dir:
+                        return self._send(400, {"error": "증빙 번들이 아직 없습니다(최종 확인 후 생성)"})
+                    data = evidence_zip_bytes(s, SESSION["base_dir"]); name = os.path.basename(s.export.dir.rstrip("/")) + "_evidence.zip"
+                return self._send(200, data, "application/zip", {"Content-Disposition": f'attachment; filename="{name}"'})
             return self._send(404, {"error": "not found"})
         except Exception as e:  # noqa: BLE001
             return self._send(400, {"error": f"{type(e).__name__}: {e}"})

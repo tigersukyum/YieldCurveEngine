@@ -118,7 +118,7 @@
     <span id="b-node">노드 —</span>
     <span id="b-run">run —</span>
     <span id="b-status" class="callout">상태: 대기</span>
-    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08i</span>
+    <span id="b-ver" class="sticker" title="화면 버전 — 이 표시가 없으면 옛 화면이 캐시된 것: Ctrl+F5">viewer 2026-09-08j</span>
   </span>
 </div>
 <div id="init-error"></div>
@@ -191,14 +191,14 @@
 </div>
 
 <div id="foot">
-  <span>서버 127.0.0.1 전용 — 금리표는 이 PC 밖으로 나가지 않습니다.</span>
+  <span id="foot-note">서버 127.0.0.1 전용 — 금리표는 이 PC 밖으로 나가지 않습니다.</span>
   <span>흐름 정의: <a href="#" onclick="return false">graph/step1_graph.py EDGES</a> · 엑셀 규격: <a href="#" onclick="return false">docs/REVIEWER_SHEET_SPEC.md</a></span>
   <span>화면이 이상하면 Ctrl+F5, 그래도 안 되면 start_app.bat 재실행.</span>
 </div>
 </div>
 
 <script>
-const VIEWER_VERSION = "2026-09-08i";  // server.py APP_VERSION 과 같아야 한다
+const VIEWER_VERSION = "2026-09-08j";  // server.py APP_VERSION 과 같아야 한다
 let GRAPH = null, STATE = null, LAYOUT = null, PREVIEW = null, MATRIX_TEXT = "", CAPTURE_PATH = null, BLOCKS = null, CURVE_TAB = "RF";
 const $ = (id) => document.getElementById(id);
 const pct = (x, d = 4) => (x == null || !isFinite(x)) ? "—" : (x * 100).toFixed(d) + "%";
@@ -411,7 +411,7 @@ async function renderResult() {
   const t = s.grid.tree, formula = !!(BLOCKS && BLOCKS.RF && BLOCKS.RF[0] && BLOCKS.RF[0].orient === "rows");
   const rows = [["프로필", esc(s.run.profile)], ["격자", `${esc(t.dt_mode)} · N=${t.N} · ${num(t.T, 2)}년`], ["PAR 잔차 max", num(s.par_check.max_abs_err, 3)],
                 ["엑셀 시트", formula ? "검토자 Rf_dc/Rd_dc 그대로(살아있는 수식 + 원본 서식)" : "값 시트(4블록)"]];
-  if (s.export?.dir) rows.push(["증빙 폴더", esc(s.export.dir)], ["증빙 xlsx", s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"]);
+  if (s.export?.dir) rows.push(["증빙 폴더", esc(s.export.dir) + ` &nbsp; <a href="/api/evidence_zip"><button class="btn secondary" style="margin:0">증빙 zip 내려받기</button></a>`], ["증빙 xlsx", s.export.xlsx_written ? esc(s.export.xlsx_path) : "미생성"]);
   h += `<div class="card"><div class="t"><span>요약</span><a href="/api/export"><button class="btn primary" style="margin:0">엑셀 내려받기 — Rf_dc / Rd_dc</button></a></div><div class="b">` + kv(rows) + `</div></div>`;
   h += `<div class="curvetabs">${["RF", "RD"].map(c => `<button class="btn ${CURVE_TAB === c ? "active" : "secondary"}" onclick="CURVE_TAB='${c}';renderResult()">${c === "RF" ? "무위험이자율 RF" : "위험이자율 RD"}</button>`).join("")}</div>`;
   const c = CURVE_TAB, r = s.rows[c.toLowerCase()];
@@ -447,10 +447,22 @@ async function renderAll() {
 
 function showInitError(msg) {
   const box = $("init-error"); box.style.display = "block";
-  box.textContent = msg + "\n조치: 서버 창을 모두 닫고 C:\\dev\\cb_valuation\\start_app.bat 를 다시 실행한 뒤(옛 서버를 자동으로 정리합니다) 브라우저에서 http://127.0.0.1:8765 를 열고 Ctrl+F5 로 새로고침하세요. viewer.html 파일을 직접 열면 동작하지 않습니다.";
+  box.textContent = msg + (window.CB_BROWSER ? "\n조치: 페이지를 새로고침(Ctrl+F5)하세요. 인터넷이 끊겨 계산 엔진(Pyodide)을 받지 못했을 수 있습니다."
+    : "\n조치: 서버 창을 모두 닫고 C:\\dev\\cb_valuation\\start_app.bat 를 다시 실행한 뒤(옛 서버를 자동으로 정리합니다) 브라우저에서 http://127.0.0.1:8765 를 열고 Ctrl+F5 로 새로고침하세요. viewer.html 파일을 직접 열면 동작하지 않습니다.");
+}
+async function downloadApi(url) {  // 브라우저(Pyodide) 모드: 서버가 없으므로 fetch 심이 돌려준 바이트를 파일로 저장
+  const r = await fetch(url);
+  if (!r.ok) { let m = "내려받기 실패"; try { m = (await r.json()).error || m; } catch (_) {} alert(m); return; }
+  const blob = await r.blob(), name = ((r.headers.get("Content-Disposition") || "").match(/filename="([^"]+)"/) || [])[1] || "download";
+  const u = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
 }
 function wireUI() {  // 서버 응답과 무관하게 먼저 붙인다(드롭존·버튼)
   wireDrop("drop", "f-file", onMatrixFile);
+  document.addEventListener("click", e => {
+    const a = e.target.closest && e.target.closest('a[href="/api/export"], a[href="/api/evidence_zip"]');
+    if (a && window.CB_BROWSER) { e.preventDefault(); downloadApi(a.getAttribute("href")); }
+  });
+  if (window.CB_BROWSER) { const f = $("foot-note"); if (f) f.textContent = "브라우저 안에서만 계산합니다(서버 없음) — 금리표·산출물은 이 PC 를 떠나지 않으며 탭을 닫으면 사라집니다. xlsx·증빙 zip 은 버튼으로 저장하세요."; }
   $("btn-paste").onclick = () => { $("paste-box").hidden = !$("paste-box").hidden; };
   $("btn-parse").onclick = parsePasted; $("btn-run").onclick = runApp;
 }
@@ -477,7 +489,7 @@ async function init() {
   if (["input", "result"].includes(tab)) showTab(tab);
   else if (STATE) showTab(document.querySelector(".tabs button.here")?.dataset.tab || "input");
 }
-init().catch(e => showInitError("화면 초기화 실패: " + e.message));
+(window.CB_BOOT || Promise.resolve()).then(init).catch(e => showInitError("화면 초기화 실패: " + e.message));
 </script>
 </body>
 </html>
