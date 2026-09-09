@@ -80,6 +80,12 @@ try:
     assert tgt, "페이지 타깃 없음"
     ws = WS(tgt["webSocketDebuggerUrl"]); ws.call("Runtime.enable")
     t0 = time.time()
+    for _ in range(240):  # pyodide.js(CDN) 가 내려와 로더 스크립트가 실행되면 window.CB_BOOT 가 생긴다 — 최대 2분 대기
+        if ev(ws, "typeof window.CB_BOOT") == "object":
+            break
+        time.sleep(0.5)
+    else:
+        raise RuntimeError("window.CB_BOOT 가 생기지 않음 — pyodide.js(CDN) 로딩 실패 또는 로더 미삽입")
     print("boot:", ev(ws, "window.CB_BOOT.then(() => 'ok')"), f"{time.time() - t0:.1f}s")
     print("version/options:", ev(ws, "JSON.stringify({v: VIEWER_VERSION, opts: [...document.querySelectorAll('#f-profile option')].map(o => o.textContent), err: document.getElementById('init-error').textContent, boot: !!document.getElementById('cb-boot')})"))
     # 업로드: 사용자가 평가사 파일을 올리는 것과 같은 경로(파일 → base64 → /api/upload → 파서). E2E_MATRIX 에 xlsx/xlsm/csv 경로를 주면 그 파일로, 없으면 fixture A csv 로.

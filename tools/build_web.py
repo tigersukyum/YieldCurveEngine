@@ -3,7 +3,7 @@
 tools/build_web.py — 정적 배포본(web/) 빌드: GitHub Pages 등 어디에 올려도 링크만 열면 브라우저 안에서 앱이 돈다(Pyodide = WebAssembly 파이썬).
 산출물: web/index.html(viewer.html + 로더), web/cb_valuation.zip(엔진 패키지 — tests/fixtures·reference/xl_*.txt·docs 제외 → 금리표·고객 자료 없음), web/.nojekyll
 로더가 하는 일: Pyodide(CDN) → micropip 으로 openpyxl(PyPI 순수 파이썬 휠) → cb_valuation.zip 을 MEMFS 에 풀고 browser_api.setup() → window.fetch 의 /api/* 를 B.call 로 바꿔치기.
-사용: python tools/build_web.py [--out web] ; 로컬 확인: python -m http.server 8790 --directory web → http://127.0.0.1:8790/
+사용: python tools/build_web.py [--out web] ; 점검만: python tools/build_web.py --check web ; 로컬 확인: python -m http.server 8790 --directory web → http://127.0.0.1:8790/
 """
 from __future__ import annotations
 import argparse, io, os, re, sys, time, zipfile
@@ -14,7 +14,11 @@ VIEWER = os.path.join(PKG, "step1_curve", "app", "viewer.html")
 PYODIDE_VERSION = "0.27.7"  # Python 3.12 — pyproject requires-python >=3.12 와 맞춘다
 CDN = f"https://cdn.jsdelivr.net/pyodide/v{PYODIDE_VERSION}/full/"
 EXCLUDE_DIRS = {"__pycache__", "tests", "docs"}
-EXCLUDE_PATH_RE = re.compile(r"(^|/)(reference/(xl_.*\.txt|excel_recalc\.py|verify_.*\.py|extract_reviewer_layout\.py|test_interp_ref\.py|mc_test\.py|sw_check\.py|recompute_boot\.py|curve_demo\.py)|.*\.pyc)$")  # 개발 도구·금리표 덤프만 제외(nodes/verify_*.py 는 엔진)
+# reference/ 는 엔진이 쓰는 interp_ref.py 만 포함(나머지는 개발 도구·금리표 덤프·ref/ 경로를 가진 대조 스크립트); .md(PRD·CLAUDE.md 등 문서)·.pyc 제외. nodes/verify_*.py 는 엔진이라 포함.
+EXCLUDE_PATH_RE = re.compile(r"(^|/)(reference/(?!interp_ref\.py$|__init__\.py$)[^/]+|[^/]*\.md|[^/]*\.pyc)$")
+# 배포본 안에 있으면 안 되는 것: 금리표 파일·fixture·엑셀 덤프, 그리고 텍스트 안의 금리표 행(라벨 뒤 소수 셋째자리 숫자가 8개 이상 이어짐)
+FORBIDDEN_NAME_RE = re.compile(r"(/tests/|/fixtures/|xl_|/ref/|\.(csv|xlsx|xlsm|json\.gz)$)")
+RATE_ROW_RE = re.compile(r"(국고채|회사채|금융|특수|통안)[^\n]{0,40}?(\d+\.\d{3}\s*[,\t]\s*){8,}")
 
 LOADER = """<script src="{cdn}pyodide.js"></script>
 <script>
@@ -72,8 +76,33 @@ def build_index(stamp: str) -> str:
     return html.replace(marker, LOADER.format(cdn=CDN, stamp=stamp) + marker, 1)
 
 
+def check_bundle(out_dir: str) -> list[str]:
+    """배포본 점검: 금지 파일명, 금리표 행 패턴(zip 안 텍스트·index.html), 허용되지 않은 reference/ 파일. 문제 목록을 돌려준다(비어 있으면 통과)."""
+    problems = []
+    zpath = os.path.join(out_dir, "cb_valuation.zip"); ipath = os.path.join(out_dir, "index.html")
+    if not (os.path.exists(zpath) and os.path.exists(ipath)):
+        return [f"배포본 없음: {zpath} / {ipath}"]
+    with zipfile.ZipFile(zpath) as z:
+        for name in z.namelist():
+            if FORBIDDEN_NAME_RE.search("/" + name) or EXCLUDE_PATH_RE.search(name):
+                problems.append(f"금지 파일: {name}")
+            if name.endswith((".py", ".json", ".txt", ".html", ".xml", ".mmd")):
+                text = z.read(name).decode("utf-8", "replace")
+                if RATE_ROW_RE.search(text):
+                    problems.append(f"금리표 행 패턴: {name}")
+    html = open(ipath, encoding="utf-8").read()
+    if RATE_ROW_RE.search(html):
+        problems.append("금리표 행 패턴: index.html")
+    return problems
+
+
 def main(argv):
-    ap = argparse.ArgumentParser(); ap.add_argument("--out", default=os.path.join(ROOT, "web")); a = ap.parse_args(argv[1:])
+    ap = argparse.ArgumentParser(); ap.add_argument("--out", default=os.path.join(ROOT, "web")); ap.add_argument("--check", metavar="DIR", help="빌드하지 않고 DIR 의 배포본만 점검")
+    a = ap.parse_args(argv[1:])
+    if a.check:
+        problems = check_bundle(a.check)
+        print("\n".join(problems) if problems else f"배포본 점검 통과: {a.check} (금리표·fixture·고객 파일 없음)")
+        return 1 if problems else 0
     os.makedirs(a.out, exist_ok=True)
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     n = build_zip(os.path.join(a.out, "cb_valuation.zip"))
@@ -83,8 +112,8 @@ def main(argv):
     # 포함 파일 점검: 금리표·고객 자료가 들어가면 안 된다
     with zipfile.ZipFile(os.path.join(a.out, "cb_valuation.zip")) as z:
         names = z.namelist()
-    bad = [x for x in names if "/tests/" in x or "xl_" in x or "/ref/" in x or x.endswith((".csv", ".xlsx", ".xlsm"))]
-    assert not bad, f"배포본에 들어가면 안 되는 파일: {bad}"
+    problems = check_bundle(a.out)
+    assert not problems, f"배포본에 들어가면 안 되는 것: {problems}"
     print(f"web/ 빌드 완료: 패키지 파일 {n}개, stamp {stamp}, pyodide {PYODIDE_VERSION}; 확인 → python -m http.server 8790 --directory {a.out}")
     return 0
 

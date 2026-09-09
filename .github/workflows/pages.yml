@@ -1,5 +1,11 @@
-# GitHub Pages 배포: main 에 push 하면 테스트 → tools/build_web.py 로 web/ 를 만들어 Pages 에 올린다.
-# 저장소 Settings → Pages → Source 를 "GitHub Actions" 로 두면 된다(비공개 저장소의 Pages 는 유료 플랜 필요 — README '링크로 실행' 참조).
+# 링크로 실행(정적 배포본) 자동 배포.
+# 이 저장소는 fixture 금리표를 담은 **비공개** 저장소이므로 GitHub Pages 를 직접 켤 수 없다(무료 플랜은 공개 저장소만).
+# 그래서 main 에 push 하면: 테스트 → tools/build_web.py 로 web/ 를 만들고(금리표·고객 자료 없음, --check 로 재확인) → web/ 만
+# 별도의 **공개** 저장소(변수 SITE_REPO, 예 tigersukyum/YieldCurveEngine-site)의 main 브랜치로 밀어 넣는다.
+# 그 공개 저장소의 Settings → Pages → Source "Deploy from a branch" (main, /(root)) 를 켜 두면 링크가 살아난다.
+#   준비: (1) 공개 저장소 생성(빈 저장소)  (2) fine-grained PAT: 그 저장소만, Contents Read and write
+#         (3) 이 저장소 Settings → Secrets and variables → Actions: secret SITE_REPO_TOKEN = PAT, variable SITE_REPO = 계정/저장소이름
+# 유료 플랜(Pro/Team)으로 이 저장소의 Pages 를 직접 쓰려면 variable USE_GITHUB_PAGES = true 로 두고 Settings → Pages → Source "GitHub Actions".
 name: pages
 on:
   push:
@@ -16,18 +22,46 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install openpyxl
       - run: python cb_valuation/step1_curve/graph/graph_check.py
       - run: python -m unittest discover -s cb_valuation/step1_curve/tests -t .
       - run: python tools/build_web.py --out web
+      - name: Check the bundle carries no rate tables or client files
+        run: python tools/build_web.py --check web
+      - name: Publish web/ to the public site repository (variable SITE_REPO + secret SITE_REPO_TOKEN)
+        if: ${{ vars.SITE_REPO != '' }}
+        env:
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          SITE_REPO_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+        run: |
+          set -e
+          if [ -z "$SITE_REPO_TOKEN" ]; then echo "::error::secret SITE_REPO_TOKEN is missing (Settings → Secrets and variables → Actions)"; exit 1; fi
+          git clone --depth 1 "https://x-access-token:${SITE_REPO_TOKEN}@github.com/${SITE_REPO}.git" site
+          cd site
+          git checkout -B main
+          find . -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -r ../web/. .
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "site unchanged"; exit 0; fi
+          git commit -q -m "site: ${GITHUB_SHA::12}"
+          git push origin main
+          echo "published → https://$(echo "$SITE_REPO" | cut -d/ -f1).github.io/$(echo "$SITE_REPO" | cut -d/ -f2)/"
+      - name: Not published (variable SITE_REPO not set)
+        if: ${{ vars.SITE_REPO == '' && vars.USE_GITHUB_PAGES != 'true' }}
+        run: echo "::notice::web/ was built but not published. Set repository variable SITE_REPO (public site repo) and secret SITE_REPO_TOKEN, or USE_GITHUB_PAGES=true on a paid plan."
       - uses: actions/upload-pages-artifact@v3
+        if: ${{ vars.USE_GITHUB_PAGES == 'true' }}
         with:
           path: web
   deploy:
+    # 이 저장소의 GitHub Pages 를 직접 쓰는 경우에만(유료 플랜, Settings → Pages → Source "GitHub Actions")
+    if: ${{ vars.USE_GITHUB_PAGES == 'true' }}
     needs: build
     runs-on: ubuntu-latest
     environment:
