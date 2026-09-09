@@ -26,6 +26,7 @@ cb_valuation/step1_curve/graph/graph.mmd
 # 사용자 결정 2026-09-07: tests/fixtures/*.csv|json 과 reference/xl_*.txt(참조 모형 금리표·검토자 패키지 값)는
 # 회사 내부 비공개 저장소 전제로 커밋한다. 공개/외부 공유 시 아래 두 줄의 주석을 해제한다.
 # cb_valuation/step1_curve/tests/fixtures/*.csv
+# cb_valuation/step1_curve/tests/fixtures/*.xlsx
 # cb_valuation/step1_curve/reference/xl_*.txt
 
 # Office 잠금 파일

@@ -8,7 +8,8 @@ crosscheck_ref.py — 독립 검증 도구(ref/ 원본이 있는 PC 에서만): 
   C2. KBI xlsm BOOT(값복사 마디, RF 반기·RD 분기 선형)  vs  엔진 LINEAR(같은 마디 합성 매트릭스) — 이표격자 YTM·기간현물·DF·0.25 격자.
   C3. KBI xlsm 'Bootstrapping_평가자'(YTM 복리변환, 주간 선형)  vs  엔진 LINEAR — 부트스트랩이 아님을 수치로 확인.
   D.  대교 'Par검증' 템플릿 예제 — 관례별 par 항등식.
-사용: python cb_valuation/step1_curve/reference/crosscheck_ref.py [A|B|C|C1|C2|C3|D|all] → 표를 stdout, JSON 을 exports/crosscheck_ref.json
+  E.  2024-12-31 KIS-NET 매트릭스(tests/fixtures/kisnet_matrix_20241231.xlsx) 로 KBI 참조 입력의 출처(BOOT 잔존 마디·검토자 행 6)와 DATA!F 재현, 영풍 Drag-along 상수.
+사용: python cb_valuation/step1_curve/reference/crosscheck_ref.py [A|B|C|C1|C2|C3|D|E|all] → 표를 stdout, JSON 을 exports/crosscheck_ref.json
 """
 from __future__ import annotations
 import json, math, os, sys, tempfile, shutil
@@ -399,6 +400,137 @@ def part_D():
     return out
 
 
+# ----------------------------------------------------------------------------- E. 2024-12-31 KIS-NET 매트릭스(사용자 제공 2026-09-09) 로 KBI 참조 입력·출력 검증
+FIX24 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tests", "fixtures", "kisnet_matrix_20241231.xlsx")
+
+
+def fixture24_text():
+    from cb_valuation.step1_curve.io.matrix_parser import read_matrix_bytes
+    with open(FIX24, "rb") as fh:
+        return read_matrix_bytes(os.path.basename(FIX24), fh.read())
+
+
+def yearfrac_30_360_us(d1, d2):
+    """Excel YEARFRAC(basis 0) — US(NASD) 30/360 (월말 규칙 포함, Excel 구현 기준)."""
+    import calendar
+    y1, m1, dd1 = d1.year, d1.month, d1.day
+    y2, m2, dd2 = d2.year, d2.month, d2.day
+    last1 = dd1 == calendar.monthrange(y1, m1)[1]
+    last2 = dd2 == calendar.monthrange(y2, m2)[1]
+    if m1 == 2 and last1 and m2 == 2 and last2:
+        dd2 = 30
+    if m1 == 2 and last1:
+        dd1 = 30
+    if dd2 == 31 and dd1 >= 30:
+        dd2 = 30
+    if dd1 == 31:
+        dd1 = 30
+    return ((y2 - y1) * 360 + (m2 - m1) * 30 + (dd2 - dd1)) / 360.0
+
+
+def mf_interpol(x, xs, ys):
+    """KBI xlsm VBA MF_INTERPOL: 첫 마디 이하 = y1·x/x1 (원점 앵커 선형), 마디 사이 선형, 마지막 마디 초과 = None."""
+    if x <= xs[0]:
+        return ys[0] * x / xs[0]
+    for i in range(1, len(xs)):
+        if x <= xs[i]:
+            return ys[i - 1] + (ys[i] - ys[i - 1]) * (x - xs[i - 1]) / (xs[i] - xs[i - 1])
+    return None
+
+
+def part_E():
+    """E1 매트릭스 행 ↔ KBI 참조 입력(xlsm BOOT 잔존 마디, 2024 검토자 Rf_dc/Rd_dc 행 6) ; E2 엔진 LINEAR(실제 2024 파일 입력) vs BOOT ;
+    E3 DATA!F(값복사 RD 연복리 현물, 날짜 격자) 를 엔진 커브 + MF_INTERPOL 로 재현 ; E4 영풍 Drag-along!G13 ; E5 검토자 행 6 최근접 행 탐색."""
+    import datetime
+    from openpyxl import load_workbook
+    text = fixture24_text(); pv = preview(text, G.Constants)
+    parsed = {r["row_index"]: r for r in parse_matrix_text(text, G.Constants)["rows"]}
+    rows_by_label = {kis_label(r): r["row_index"] for r in pv["rows"]}
+    ten12 = TEN[:12]
+    ytm = lambda lab: [parsed[rows_by_label[lab]]["ytm_pct"].get(t) for t in ten12]
+    out = {"matrix_rows": {lab: dict(zip(ten12, ytm(lab))) for lab in ("국고채", "회사채BB+", "사모회사채BB+")}}
+    print("\n[E] 2024-12-31 KIS-NET 매트릭스(사용자 제공) — KBI 참조 입력의 출처·재현")
+    # --- E1 xlsm BOOT 잔존 마디, 2024 검토자 행 6
+    wb = load_workbook(KBI_XLSM, read_only=True, data_only=True); ws = wb["BOOT"]
+    E, Gc, H, I = (_sheet_col(ws, r) for r in ("E10:E29", "G10:G29", "H10:H29", "I10:I29"))
+    K, M, N = (_sheet_col(ws, r) for r in ("K10:K49", "M10:M49", "N10:N49"))
+    T, V, W, X = (_sheet_col(ws, r) for r in ("T10:T49", "V10:V49", "W10:W49", "X10:X49"))
+    Z, AB, AC = (_sheet_col(ws, r) for r in ("Z10:Z49", "AB10:AB49", "AC10:AC49"))
+    live3m = _sheet_col(ws, "C10:C10")[0]
+    wsd = wb["DATA"]
+    d_dates = _sheet_col(wsd, "B9:B270"); d_F = _sheet_col(wsd, "F9:F270")
+    wb.close()
+    tt = TEN_T
+    boot_rf = {t: Gc[int(round(t * 2)) - 1] * 200 for t in (0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 7, 10)}
+    boot_rd = {tt[l]: V[int(round(tt[l] * 4)) - 1] * 400 for l in ten12}
+    rf24 = dict(zip([tt[l] for l in ten12], ytm("국고채")))
+    d_rf = max(abs(boot_rf[t] - rf24[t]) for t in boot_rf)
+    d_rd = {lab: max(abs(boot_rd[tt[l]] - v) for l, v in zip(ten12, ytm(lab))) for lab in ("회사채BB+", "사모회사채BB+")}
+    out["E1_boot_knots_vs_matrix_pctpt"] = {"RF_국고채(6M~10Y)": d_rf, **{f"RD_vs_{k}": v for k, v in d_rd.items()}}
+    print(f"  E1 xlsm BOOT 잔존 마디 vs 2024 매트릭스(%p): RF 국고채 {d_rf:.2e} | RD vs 공모 BB+ {d_rd['회사채BB+']:.2e} | RD vs 사모 BB+ {d_rd['사모회사채BB+']:.3f}  → BOOT 마디 = 2024-12-31 국고채·공모 BB+")
+    wb2 = load_workbook(KBI24, read_only=True, data_only=True)
+    rf6 = list(wb2["Rf_dc"].iter_rows(min_row=6, max_row=6, min_col=3, max_col=14, values_only=True))[0]
+    rd6 = list(wb2["Rd_dc"].iter_rows(min_row=6, max_row=6, min_col=3, max_col=14, values_only=True))[0]
+    hdr = {k: str(wb2[k]["B5"].value)[:10] for k in ("Rf_dc", "Rd_dc")}
+    wb2.close()
+    # E5 최근접 행 탐색(전 행)
+    best = {}
+    for name, row6 in (("Rf_dc", rf6), ("Rd_dc", rd6)):
+        cand = []
+        for r in pv["rows"]:
+            vals = [parsed[r["row_index"]]["ytm_pct"].get(t) for t in ten12]
+            if any(v is None for v in vals):
+                continue
+            cand.append((max(abs(a * 100 - b) for a, b in zip(row6, vals)), kis_label(r), r["row_index"]))
+        cand.sort(); best[name] = cand[:3]
+    out["E5_reviewer_row6_nearest_rows"] = {k: [{"max_diff_pctpt": d, "label": l, "row": i} for d, l, i in v] for k, v in best.items()}
+    out["E5_reviewer_header_date"] = hdr
+    print(f"  E5 2024 검토자 Rf_dc/Rd_dc 행 6 YTM vs 2024-12-31 매트릭스 전 행(헤더 B5 = {hdr}): 최근접 " + " ; ".join(f"{k}: {v[0][1]}(행{v[0][2]}) 최대차 {v[0][0]:.3f}%p" for k, v in best.items()) + "  → 어느 행과도 불일치(다른 고시분)")
+    # --- E2 엔진 LINEAR(실제 2024 파일) vs BOOT
+    rf_idx = rows_by_label["국고채"]; rd_idx = rows_by_label["회사채BB+"]
+    s, C = run_engine(text, "LINEAR", rf_idx, rd_idx, "2024-12-31")
+    e2 = {}
+    for c, m, grid_t, ytm_m, spot_pp, dfs, q_t, q_ann, q_cont in (("RF", 2, E, Gc, H, I, K, M, N), ("RD", 4, T, V, W, X, Z, AB, AC)):
+        ey = _vals(s.interp.ytm_on_coupon_grid[c]); ep = _vals(s.bootstrap.spot_pp[c]); ed = _vals(s.bootstrap.df[c])
+        n = len(grid_t)
+        sa = _vals(s.tree.spot_annual_on_grid[c]); sco = _vals(s.tree.spot_cont_on_grid[c])
+        idx = [int(round(t * 52)) for t in q_t]
+        on_c = [j for j, t in enumerate(q_t) if abs(t * m - round(t * m)) < 1e-9]
+        e2[c] = {"ytm_on_coupon_grid": _stats([ey[i] - ytm_m[i] * m for i in range(n)]), "spot_per_period": _stats([ep[i] - spot_pp[i] for i in range(n)]), "df": _stats([ed[i] - dfs[i] for i in range(n)]),
+                 "quarter_grid_annual_bp_on_coupon": _stats([(sa[idx[j]] - q_ann[j]) * BP for j in on_c]), "quarter_grid_cont_bp_on_coupon": _stats([(sco[idx[j]] - q_cont[j]) * BP for j in on_c])}
+        print(f"  E2 엔진 LINEAR(2024 파일 입력) vs BOOT {c}: 이표격자 YTM {_fmt(e2[c]['ytm_on_coupon_grid'])} | 기간현물 {_fmt(e2[c]['spot_per_period'])} | DF {_fmt(e2[c]['df'])} | 0.25격자 이표점 연복리 {_fmt(e2[c]['quarter_grid_annual_bp_on_coupon'], 'bp')}")
+    m10_engine = _vals(s.tree.spot_annual_on_grid["RF"])[13]
+    e2["RF_0.25Y_note"] = {"BOOT_M10": M[0], "BOOT_L10_is_live_3M/2": live3m / 2, "engine_0.25Y_annual": m10_engine, "diff_bp": (m10_engine - M[0]) * BP}
+    print(f"     RF 0.25Y: BOOT M10 {M[0]:.6f} (L10 = 라이브 2025 3M {live3m:.5f}/2) vs 엔진 {m10_engine:.6f} (0.5Y 평탄) → {(m10_engine - M[0]) * BP:+.1f}bp (시트의 라이브/잔존 혼합)")
+    out["E2"] = e2
+    # --- E3 DATA!F 재현: F = MF_INTERPOL(YEARFRAC(2024-12-31, 일자, 0), BOOT!Z, BOOT!AB) ; AB 는 엔진 RD 연복리 현물(0.25 격자) 로 대체
+    sa_rd = _vals(s.tree.spot_annual_on_grid["RD"])
+    ab_engine = [sa_rd[int(round(t * 52))] for t in Z]
+    base = datetime.date(2024, 12, 31)
+    rep = []; rep_sheet = []
+    for d, f in zip(d_dates, d_F):
+        dd = d.date() if hasattr(d, "date") else d
+        if dd <= base:
+            rep.append(0.0); rep_sheet.append(0.0); continue
+        x = yearfrac_30_360_us(base, dd)
+        rep.append(mf_interpol(x, Z, ab_engine)); rep_sheet.append(mf_interpol(x, Z, AB))
+    pairs = [(a, b) for a, b in zip(rep, d_F) if a is not None and isinstance(b, (int, float))]
+    e3 = {"n": len(pairs), "max_abs_err_engine": max(abs(a - b) for a, b in pairs), "n_bit_exact_engine": sum(1 for a, b in pairs if a == b),
+          "max_abs_err_sheetAB": max(abs(a - b) for a, b in zip(rep_sheet, d_F) if a is not None and isinstance(b, (int, float))),
+          "n_dates_after_base": sum(1 for d in d_dates if (d.date() if hasattr(d, "date") else d) > base), "n_none": sum(1 for a in rep if a is None)}
+    out["E3_DATA_F"] = e3
+    print(f"  E3 DATA!F(262행, 2024-12-31 기준 YEARFRAC 30/360 → MF_INTERPOL(원점 앵커 선형)) 재현: 엔진 RD 연복리 현물로 max|Δ| {e3['max_abs_err_engine']:.2e} (비트 일치 {e3['n_bit_exact_engine']}/{e3['n']}) ; 시트 AB 로 {e3['max_abs_err_sheetAB']:.2e} ; 기준일 이후 {e3['n_dates_after_base']}행, 10Y 초과(None) {e3['n_none']}")
+    # --- E4 영풍 Drag-along!G13 = 0.02748 (2024년말 12개월 연속현물)
+    e4 = {}
+    for prof in ("LINEAR", "REVIEWER_2024"):
+        s2, _ = run_engine(text, prof, rf_idx, rd_idx, "2024-12-31")
+        sc = _vals(s2.tree.spot_cont_on_grid["RF"])[52]
+        e4[prof] = {"engine_1Y_cont": sc, "diff_bp": (sc - 0.02748) * BP}
+    out["E4_drag_along_G13"] = {"sheet": 0.02748, "ytm_1Y_pct": rf24[1], **e4}
+    print("  E4 영풍 Drag-along!G13 0.02748 vs 엔진 2024-12-31 국고채 1Y 연속현물: " + " ; ".join(f"{p} {v['engine_1Y_cont']:.6f} ({v['diff_bp']:+.2f}bp)" for p, v in e4.items()) + " → 재현 안 됨(출처 미확인)")
+    return out
+
+
 def part_C():
     return {"C1_YP_boot_strapping": part_C1(), "C2_KBI_BOOT": part_C2(), "C3_KBI_appraiser_sheet": part_C3()}
 
@@ -416,6 +548,8 @@ def main(argv):
         out[which] = globals()["part_" + which]()
     if which in ("D", "ALL"):
         out["D"] = part_D()
+    if which in ("E", "ALL"):
+        out["E"] = part_E()
     os.makedirs("exports", exist_ok=True)
     with open(os.path.join("exports", "crosscheck_ref.json"), "w", encoding="utf-8") as fh:
         json.dump(out, fh, ensure_ascii=False, indent=1, default=str)
