@@ -35,7 +35,7 @@ python -m cb_valuation.step1_curve.app.server --open   # 같은 것(포트 변�
 - **배포본에는 금리표·고객 자료가 없다**: `tools/build_web.py` 가 `tests/fixtures`, `reference/xl_*.txt`, `docs/`, `ref/` 를 제외하고 패키지를 zip 으로 묶는다(포함되면 빌드가 실패한다).
 
 준비 순서
-- **공개 저장소인 경우(현재 `tigersukyum/YieldCurveEngine`)**: `main` 에 push 하면 워크플로가 테스트 → `python tools/build_web.py`(배포본에 금리표·고객 파일이 없는지 `--check` 로 재확인) → 이 저장소의 GitHub Pages 로 배포한다. 저장소 Settings → Pages → Build and deployment → Source 가 **GitHub Actions** 여야 한다(워크플로의 `configure-pages` 가 자동으로 켜 보지만, 404 가 나면 손으로 한 번 설정). 링크: `https://<계정>.github.io/<저장소이름>/`.
+- **공개 저장소인 경우(현재 `tigersukyum/YieldCurveEngine`)**: `main` 에 push 하면 워크플로가 테스트 → `python tools/build_web.py`(배포본에 금리표·고객 파일이 없는지 `--check` 로 재확인) → 이 저장소의 GitHub Pages 로 배포한다. 저장소 Settings → Pages → Build and deployment → Source 가 **GitHub Actions** 여야 한다(워크플로의 `configure-pages` 가 자동으로 켜 보지만, 404 가 나면 손으로 한 번 설정). 링크: **https://tigersukyum.github.io/YieldCurveEngine/** (2026-09-09 배포 확인).
 - **주의**: 공개 저장소에는 `tests/fixtures/`(KIS-NET 매트릭스·검토자 패키지 값)·`reference/xl_*.txt`·`docs/CROSS_CHECK_REF_*.md`(고객 파일명·셀 값) 가 그대로 노출된다. 사용자 결정(2026-09-07)은 '비공개 저장소에서만 커밋' 이었으므로, 공개로 두려면 그 파일들을 저장소와 커밋 이력에서 제거하거나, 저장소를 다시 비공개로 돌리고 아래 방식으로 배포한다.
 - **비공개 저장소인 경우**(무료 플랜은 비공개 저장소의 Pages 를 켤 수 없다): 배포본만 별도의 공개 저장소로 보낸다.
   1. 배포용 공개 저장소를 하나 만든다(예 `YieldCurveEngine-site`, 빈 저장소). 여기에는 `index.html`·`cb_valuation.zip`·`.nojekyll` 만 올라간다.
