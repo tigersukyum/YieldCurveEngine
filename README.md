@@ -34,15 +34,15 @@ python -m cb_valuation.step1_curve.app.server --open   # 같은 것(포트 변�
 - **데이터는 PC 를 떠나지 않는다**: 매트릭스·산출물은 브라우저 메모리 파일시스템(`/work`)에만 있다. 외부에서 받는 것은 코드뿐(Pyodide 는 jsDelivr CDN, openpyxl 은 PyPI 휠). 탭을 닫으면 사라지므로 xlsx 와 증빙 zip 은 화면의 버튼으로 저장한다.
 - **배포본에는 금리표·고객 자료가 없다**: `tools/build_web.py` 가 `tests/fixtures`, `reference/xl_*.txt`, `docs/`, `ref/` 를 제외하고 패키지를 zip 으로 묶는다(포함되면 빌드가 실패한다).
 
-준비 순서 (이 저장소는 fixture 금리표 때문에 **비공개**여야 하고, 비공개 저장소의 Pages 는 무료 플랜에서 켤 수 없다 → 배포본만 별도의 공개 저장소로 보낸다)
-1. 코드 저장소(비공개)를 GitHub 에 올린다: `git remote add origin … && git push -u origin main` (이미 있으면 `git remote set-url origin …`).
-2. **배포용 공개 저장소**를 하나 만든다(예 `YieldCurveEngine-site`, 빈 저장소, README 없이). 여기에는 `index.html`·`cb_valuation.zip`·`.nojekyll` 만 올라가며 금리표·고객 자료가 없다(`python tools/build_web.py --check web` 이 매 빌드마다 확인).
-3. 배포용 저장소에 쓸 수 있는 토큰: GitHub 오른쪽 위 프로필 → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate. Repository access = *Only select repositories* 로 배포용 저장소만 고르고, Permissions → Repository permissions → **Contents: Read and write**. 만들어진 토큰 문자열을 복사한다(한 번만 보인다).
-4. 코드 저장소 Settings → **Secrets and variables → Actions**: *Secrets* 탭에 `SITE_REPO_TOKEN` = 방금 토큰, *Variables* 탭에 `SITE_REPO` = `계정/배포용저장소이름` (예 `tigersukyum/YieldCurveEngine-site`).
-5. Actions 탭에서 `pages` 워크플로를 한 번 실행(Run workflow)하거나 `main` 에 push 한다. 성공하면 배포용 저장소 main 에 파일이 생긴다.
-6. 배포용 저장소 Settings → Pages → Build and deployment → Source **Deploy from a branch**, Branch **main / (root)** → Save. 1~2분 뒤 링크: `https://<계정>.github.io/<배포용저장소이름>/`.
-7. 유료 플랜(Pro/Team)이라 이 저장소의 Pages 를 직접 쓰고 싶으면: Variables 에 `USE_GITHUB_PAGES` = `true`, Settings → Pages → Source **GitHub Actions**. (Team 플랜에서도 Pages 주소 자체는 누구나 열 수 있다.)
-8. 로컬에서 미리 보기: `python tools/build_web.py` 후 `python -m http.server 8790 --directory web` → `http://127.0.0.1:8790/` (인터넷 필요 — CDN·PyPI).
+준비 순서
+- **공개 저장소인 경우(현재 `tigersukyum/YieldCurveEngine`)**: `main` 에 push 하면 워크플로가 테스트 → `python tools/build_web.py`(배포본에 금리표·고객 파일이 없는지 `--check` 로 재확인) → 이 저장소의 GitHub Pages 로 배포한다. 저장소 Settings → Pages → Build and deployment → Source 가 **GitHub Actions** 여야 한다(워크플로의 `configure-pages` 가 자동으로 켜 보지만, 404 가 나면 손으로 한 번 설정). 링크: `https://<계정>.github.io/<저장소이름>/`.
+- **주의**: 공개 저장소에는 `tests/fixtures/`(KIS-NET 매트릭스·검토자 패키지 값)·`reference/xl_*.txt`·`docs/CROSS_CHECK_REF_*.md`(고객 파일명·셀 값) 가 그대로 노출된다. 사용자 결정(2026-09-07)은 '비공개 저장소에서만 커밋' 이었으므로, 공개로 두려면 그 파일들을 저장소와 커밋 이력에서 제거하거나, 저장소를 다시 비공개로 돌리고 아래 방식으로 배포한다.
+- **비공개 저장소인 경우**(무료 플랜은 비공개 저장소의 Pages 를 켤 수 없다): 배포본만 별도의 공개 저장소로 보낸다.
+  1. 배포용 공개 저장소를 하나 만든다(예 `YieldCurveEngine-site`, 빈 저장소). 여기에는 `index.html`·`cb_valuation.zip`·`.nojekyll` 만 올라간다.
+  2. 토큰: 프로필 → Settings → Developer settings → Personal access tokens → **Fine-grained tokens** → Generate. Repository access = *Only select repositories* 로 배포용 저장소만, Permissions → **Contents: Read and write**.
+  3. 코드 저장소 Settings → **Secrets and variables → Actions**: Secrets 에 `SITE_REPO_TOKEN` = 토큰, Variables 에 `SITE_REPO` = `계정/배포용저장소이름`. 이 변수가 있으면 워크플로는 직접 Pages 배포 대신 이 저장소로 push 한다.
+  4. 배포용 저장소 Settings → Pages → Source **Deploy from a branch**, Branch **main / (root)**. 링크: `https://<계정>.github.io/<배포용저장소이름>/`.
+- 로컬에서 미리 보기: `python tools/build_web.py` 후 `python -m http.server 8790 --directory web` → `http://127.0.0.1:8790/` (인터넷 필요 — CDN·PyPI).
 
 사용자 쪽에서 보이는 것: 링크를 열면 검은 화면에 "계산 엔진을 불러오는 중…"(처음 10~30초, 이후는 브라우저 캐시로 빨라짐) → 평소와 같은 화면. 확인·계산·엑셀 내려받기·증빙 zip 내려받기가 모두 브라우저 안에서 끝난다. 명령행·Excel COM 검증 도구는 로컬 설치 모드에서만 쓴다.
 
